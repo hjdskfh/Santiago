@@ -91,9 +91,10 @@ void InitializeMoveProbMap(void) {
 
     for (int x = 0; x < Lx; x++) {
         for (int y = 0; y < Ly; y++) {
-            double scale_x = ((double)x / Lx) * M_PI;
-            MoveProbMap[x][y] = 1 - (uneven_sin_function(scale_x) / f_max);
-            
+            double scale_x = ((double)x / Lx) * 2 * M_PI;
+			double move_x = scale_x - x_max; // scale x to the point where the function is periodic and the minumum is at the borders
+            MoveProbMap[x][y] = 1 - ((uneven_sin_function(scale_x) / (2 * f_max)) + 0.5);
+    
 			if (MoveProbMap[x][y] < 0.0) {
 				MoveProbMap[x][y] = 0.0; // Ensure no negative probabilities
 			} else if (MoveProbMap[x][y] > 1.0) {
