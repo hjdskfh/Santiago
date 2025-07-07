@@ -259,8 +259,13 @@ def load_occupancy_data(folder_path, time_step):
     target_file = f"{folder_path}/Occupancy_{actual_time}.dat"
     try:
         data = np.loadtxt(target_file)
+        # Handle both flattened (1D) and proper 2D format
+        if data.ndim == 1 and len(data) == 4000:  # 100 * 40 = 4000
+            # Reshape flattened data to 2D (40 rows, 100 cols)
+            data = data.reshape(40, 100)
         return data, actual_time
-    except:
+    except Exception as e:
+        print(f"Error loading {target_file}: {e}")
         return None, None
 
 def process_folder_for_sweep(folder_path, time_step):
@@ -366,6 +371,9 @@ def print_single_heatmap(file_path=None, data=None, title=None, save_path=None, 
             plot_data = data
         elif file_path is not None:
             plot_data = np.loadtxt(file_path)
+            # Handle both flattened (1D) and proper 2D format
+            if plot_data.ndim == 1 and len(plot_data) == 4000:  # 100 * 40 = 4000
+                plot_data = plot_data.reshape(40, 100)
         else:
             raise ValueError("Either file_path or data must be provided")
         
@@ -513,6 +521,9 @@ def visualize_time_evolution(directory_path, save_dir=None, show_individual=Fals
     for i, (time_step, file_path) in enumerate(time_files):
         try:
             data = np.loadtxt(file_path)
+            # Handle both flattened (1D) and proper 2D format
+            if data.ndim == 1 and len(data) == 4000:  # 100 * 40 = 4000
+                data = data.reshape(40, 100)
             all_data.append(data)
             
             if show_individual or save_dir:

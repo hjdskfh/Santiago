@@ -9,6 +9,7 @@ MOVE_PROB="default"
 USE_START_CONFIG=false  # Default behavior: random configuration for each run
 SAVE_INTERVAL=0  # Default: no intermediate saves
 TRACK_MOVEMENT=0  # Default: no movement tracking
+CALCULATE_DENSITY_AND_FLUX=0  # Default: no density and flux calculation
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -50,6 +51,12 @@ while [[ $# -gt 0 ]]; do
             echo "Movement tracking enabled"
             shift
             ;;
+        --calculate-density-and-flux)
+            CALCULATE_DENSITY_AND_FLUX=1
+            START_STEP_FOR_CALC = "$2"
+            echo "Density and flux calculation enabled with start step $START_STEP_FOR_CALC"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             echo "Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N] [--track-movement]"
@@ -58,6 +65,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --start-config: Create start configuration"
             echo "  --save-interval N: Save every N steps for time evolution analysis"
             echo "  --track-movement: Enable movement tracking at save intervals"
+            echo "  --calculate-density-and-flux START_NUMBER: Enable density and flux calculation starting from timestep START_NUMBER"
             echo "Note: Gamma and G parameters are set in the script's parameter section"
         
             exit 1
@@ -95,6 +103,9 @@ if [ "$TRACK_MOVEMENT" = "1" ]; then
 fi
 if [ -n "$OUTPUT_DIR" ]; then
     FLAGS="${FLAGS}_custom-dir"
+fi
+if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
+    FLAGS="${FLAGS}_calc_density_flux_from_${START_STEP_FOR_CALC}"
 fi
 
 # Apply flags to directory name (always include timestamp, add flags if any)
@@ -142,14 +153,14 @@ for density in "${densities[@]}"; do
         start_name="$RUNS_DIR/START_d${density}_t${start_tumble_rate}_time${total_time}"
         echo "[Creating start condition] Running: density=$density, tumble_rate=$start_tumble_rate, run_name=$start_name"
         
-        # Build command for start configuration based on potential type
-        start_cmd="./lattice2D-Lea-4-potential $density $start_tumble_rate $total_time $start_name none $MOVE_PROB $SAVE_INTERVAL $TRACK_MOVEMENT"
+        # Build command for start configuration using new named parameter format
+        start_cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $start_tumble_rate --total-time $total_time --run-name $start_name --potential $MOVE_PROB"
         
-        # Add potential-specific parameters
+        # Add potential-specific parameters for start configuration
         if [ "$MOVE_PROB" = "uneven-sin" ]; then
-            start_cmd="$start_cmd $gamma"
+            start_cmd="$start_cmd --gamma $gamma"
         elif [ "$MOVE_PROB" = "director-based-sin" ]; then
-            start_cmd="$start_cmd $gamma $g"
+            start_cmd="$start_cmd --gamma $gamma --g $g"
         fi
         
         $start_cmd 
@@ -180,14 +191,35 @@ for density in "${densities[@]}"; do
             fi
         fi
         
-        # Run the simulation - build command based on potential type
-        cmd="./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name $initial_file $MOVE_PROB $SAVE_INTERVAL $TRACK_MOVEMENT"
+        # Run the simulation - build command using new named parameter format
+        cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $tumble_rate --total-time $total_time --run-name $run_name"
+        
+        # Add initial file if not "none"
+        if [ "$initial_file" != "none" ]; then
+            cmd="$cmd --initial-file $initial_file"
+        fi
+        
+        # Add potential type
+        cmd="$cmd --potential $MOVE_PROB"
+        
+        # Add save interval
+        cmd="$cmd --save-interval $SAVE_INTERVAL"
+        
+        # Add movement tracking
+        if [ "$TRACK_MOVEMENT" = "1" ]; then
+            cmd="$cmd --track-movement"
+        fi
+        
+        # Add density and flux calculation flags
+        if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
+            cmd="$cmd --track-density --track-flux"
+        fi
         
         # Add potential-specific parameters
         if [ "$MOVE_PROB" = "uneven-sin" ]; then
-            cmd="$cmd $gamma"
+            cmd="$cmd --gamma $gamma"
         elif [ "$MOVE_PROB" = "director-based-sin" ]; then
-            cmd="$cmd $gamma $g"
+            cmd="$cmd --gamma $gamma --g $g"
         fi
         # No extra parameters needed for "default" type
         
@@ -207,6 +239,7 @@ echo "  - Movement probability type: $MOVE_PROB"
 echo "  - Start config: $USE_START_CONFIG"
 echo "  - Save interval: $SAVE_INTERVAL"
 echo "  - Movement tracking: $TRACK_MOVEMENT"
+echo "  - calculate density and flux: $CALCULATE_DENSITY_AND_FLUX from step $START_STEP_FOR_CALC"
 if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
     echo "  - Gamma parameter: $gamma"
 fi
