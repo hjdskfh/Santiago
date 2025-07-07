@@ -6,7 +6,7 @@
 #include <errno.h>
 
 // Size of the mesh
-#define Lx 40
+#define Lx 100
 #define Ly 40
 
 #define WALL 0 // Options: 0 (false) or 1 (true)
@@ -36,27 +36,38 @@ double Density; // Particle density, as N/(Lx*Ly). Its max value is nmax
 double TumbRate; // Tumbling rate
 long int NParticles; // Number of particles, computed from the density
 long int SaveInterval; // Interval for saving intermediate steps (0 = no intermediate saves)
+double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
+double G; // Global parameter for director-based potential
 
 // Function pointer for potential calculation
-double (*CalculateMoveProb)(int x, int y);
+double (*CalculateMoveProb)(int x, int y, int dir_x, int dir_y);
 
 // Pre-calculated movement probability map
 double MoveProbMap[Lx][Ly];
 int MoveProbMapInitialized = 0;
 
-// Basic functions first
-double integrate_curve(double (*func)(double), double a, double b, int n) {
-    double h = (b - a) / n;
-    double sum = 0.5 * (func(a) + func(b));
-    for (int i = 1; i < n; ++i) {
-        double x = a + i * h;
-        sum += func(x);
-    }
-    return sum * h;
-}
+// Structure to define a potential type
+typedef struct {
+    const char* name;
+    void (*initialize_func)(void);
+} PotentialDefinition;
 
-double uneven_sin_function(double x) {
-    return sin(x) - 0.5 * sin(2 * x);
+// Forward declarations for initialization functions
+void InitializeUnevenSinMap(void);
+void InitializeDirectorBasedSinMap(void);
+void InitializeMoveProbMap(void);
+
+// Registry of all available potential types - ADD NEW POTENTIALS HERE
+static const PotentialDefinition POTENTIAL_REGISTRY[] = {
+    {"uneven-sin", InitializeUnevenSinMap},
+	{"director-based-sin", InitializeDirectorBasedSinMap},
+    {NULL, NULL} // Terminator
+};
+
+
+// Movement probability function definitions
+double uneven_sin_function(double x, double gamma) {
+    return sin(x) + gamma * sin(2 * x);
 }
 
 // Golden Section Search to find maximum
@@ -79,74 +90,120 @@ double golden_section_search(double (*func)(double), double a, double b, double 
     return (a + b) / 2;
 }
 
+// Wrapper functions for golden section search (captures gamma)
+static double uneven_sin_for_search(double x) {
+    return uneven_sin_function(x, Gamma);
+}
 
-// Function to initialize the movement probability map
-void InitializeMoveProbMap(void) {
-    if (MoveProbMapInitialized) return;
-
-	// Set interval [0, pi] and tolerance
+// Potential initialization functions
+void InitializeUnevenSinMap(void) {
     // Find the x value where the maximum occurs
-    double x_max = golden_section_search(uneven_sin_function, 0.0, M_PI, 1e-6);
-    double f_max = uneven_sin_function(x_max);
+    double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
+    double f_max = uneven_sin_function(x_max, Gamma);
 
     for (int x = 0; x < Lx; x++) {
         for (int y = 0; y < Ly; y++) {
             double scale_x = ((double)x / Lx) * 2 * M_PI;
-			double move_x = scale_x - x_max; // scale x to the point where the function is periodic and the minumum is at the borders
-            MoveProbMap[x][y] = 1 - ((uneven_sin_function(scale_x) / (2 * f_max)) + 0.5);
-    
-			if (MoveProbMap[x][y] < 0.0) {
-				MoveProbMap[x][y] = 0.0; // Ensure no negative probabilities
-			} else if (MoveProbMap[x][y] > 1.0) {
-				MoveProbMap[x][y] = 1.0; // Ensure no probabilities greater than 1
-			}
-
-            // Debug: print first few values with detailed info: x < 3 && 
-            if (y == 2) {
-                fprintf(stderr, "Calculating MoveProbMap[%d][%d] with scale_x = %.6f\n", x, y, scale_x);
-                fprintf(stderr, "uneven_sin_function(scale_x) = %.6f\n", uneven_sin_function(scale_x));
-				fprintf(stderr, "f_max = %.6f\n", f_max);
-                fprintf(stderr, "MoveProbMap[%d][%d] = %.6f\n", x, y, MoveProbMap[x][y]);
-            }
+            MoveProbMap[x][y] = 1 - ((uneven_sin_function(scale_x, Gamma) / (2 * f_max)) + 0.5);
+            
+            // Ensure valid probability range
+            if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
+            if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
         }
     }
-    MoveProbMapInitialized = 1;
-    fprintf(stderr, "Movement probability map initialized.\n");
 }
 
-// Potential functions
-double DefaultPotential(int x, int y) {
-    // Default: always allow movement (100% probability)
-    return 1.0;
+void InitializeDirectorBasedSinMap(void) {
+    // Find maximum for normalization
+	double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
+    double f_max = uneven_sin_function(x_max, Gamma);
+    
+	for (int x = 0; x < Lx; x++) {
+        for (int y = 0; y < Ly; y++) {
+            double scale_x = ((double)x / Lx) * 2 * M_PI;
+            MoveProbMap[x][y] = 1 - (0.5 + G * (uneven_sin_function(scale_x, Gamma) / (2 * f_max)));
+            
+            // Ensure valid probability range
+            if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
+            if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
+        }
+    }
 }
 
-double UnevenSinPotential(int x, int y) {
-	// Use pre-calculated values from the map and do 1-value
-	(void)y; // Suppress unused parameter warning
-	if (!MoveProbMapInitialized) {
-		InitializeMoveProbMap();
-	}
-	return MoveProbMap[x][y];
-}
-
-// Function to set the potential based on string name
-void SetPotentialFunction(const char* potential_type) {
-    fprintf(stderr, "DEBUG: Setting potential function to '%s'\n", potential_type);
-    if (strcmp(potential_type, "default") == 0) {
-        CalculateMoveProb = DefaultPotential;
-        fprintf(stderr, "Using default movement probability (always allow movement)\n");
-    } else if (strcmp(potential_type, "uneven-sin") == 0) {
-        CalculateMoveProb = UnevenSinPotential;
-        fprintf(stderr, "Using uneven sin movement probability\n");
-    } else {
-        fprintf(stderr, "Error: Unknown movement probability type '%s'\n", potential_type);
-        fprintf(stderr, "Available types: default, uneven-sin\n");
-        exit(1);
+// Simple function to calculate movement probability based on potential type
+double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
+    (void)y; // Most potentials only depend on x
+    
+    if (strcmp(PotentialType, "default") == 0) {
+        return 1.0; // Always allow movement
     }
     
-    // Test the function pointer
-    double test_prob = CalculateMoveProb(0, 0);
-    fprintf(stderr, "DEBUG: Test call CalculateMoveProb(0,0) = %.6f\n", test_prob);
+    if (strcmp(PotentialType, "director-based-sin") == 0) {
+        // For director-based potential, check director orientation
+        if (dir_y != 0) {
+            // Director is pointing in ±y direction -> neutral probability
+            return 0.5;
+        } else {
+            // Director is pointing in ±x direction -> use sinusoidal potential
+            if (!MoveProbMapInitialized) {
+                InitializeMoveProbMap();
+            }
+            return MoveProbMap[x][y];
+        }
+    }
+    
+    // All other types use the pre-calculated map
+    if (!MoveProbMapInitialized) {
+        InitializeMoveProbMap();
+    }
+    return MoveProbMap[x][y];
+}
+
+// Initialize the movement probability map based on potential type
+void InitializeMoveProbMap(void) {
+    if (MoveProbMapInitialized) return;
+    
+    fprintf(stderr, "Initializing %s potential (gamma = %.3f)...\n", PotentialType, Gamma);
+    
+    // Look up potential type in registry
+    for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
+        if (strcmp(PotentialType, POTENTIAL_REGISTRY[i].name) == 0) {
+            POTENTIAL_REGISTRY[i].initialize_func();
+            MoveProbMapInitialized = 1;
+            fprintf(stderr, "Movement probability map initialized.\n");
+            return;
+        }
+    }
+    
+    // If we get here, the potential type was not found
+    fprintf(stderr, "Error: Unknown potential type '%s'\n", PotentialType);
+    fprintf(stderr, "Available types: default");
+    for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
+        fprintf(stderr, ", %s", POTENTIAL_REGISTRY[i].name);
+    }
+    fprintf(stderr, "\n");
+    exit(1);
+}
+
+// Function to validate potential type
+void SetPotentialFunction(const char* potential_type) {
+    // Special case: "default" potential
+    if (strcmp(potential_type, "default") == 0) {
+        CalculateMoveProb = CalculateMovementProbability;
+        return;
+    }
+    
+    // Check if potential type exists in registry
+    for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
+        if (strcmp(potential_type, POTENTIAL_REGISTRY[i].name) == 0) {
+            CalculateMoveProb = CalculateMovementProbability;
+            return;
+        }
+    }
+    
+    // If we get here, the potential type was not found
+    fprintf(stderr, "Error: Unknown movement probability type '%s'\n", potential_type);
+    exit(1);
 }
 
 // Reorders each time the order of the particles
@@ -335,8 +392,8 @@ void Iterate(long int step)
 		// Check if available and move the particle
 		if(Occupancy[inew][jnew]<nmax)
 		{
-			// Calculate movement probability based on potential at new position
-			double move_probability = CalculateMoveProb(inew, jnew);
+			// Calculate movement probability based on potential at new position and particle director
+			double move_probability = CalculateMoveProb(inew, jnew, DirectorX[n], DirectorY[n]);
 			
 			// Debug: Print movement probability
 			if(step % 1000 == 0 && n < 5) { // Only print for first few particles every 1000 steps
@@ -399,13 +456,17 @@ int main(int argc, char **argv)
 	long int TotalTime; // Total simulation time, in steps
 	long int step;
 	
-	// Check command line arguments
-	if(argc < 5 || argc > 8)
+	// Check command line arguments - now with smarter parameter handling
+	if(argc < 5)
 	{
-		fprintf(stderr,"Usage: %s <density> <tumbling_rate> <total_time> <run_name> [initial_file|none] [move_prob_type] [save_interval]\n", argv[0]);
+		fprintf(stderr,"Usage: %s <density> <tumbling_rate> <total_time> <run_name> [initial_file|none] [move_prob_type] [save_interval] [parameters...]\n", argv[0]);
 		fprintf(stderr,"  initial_file: path to initial occupancy matrix file, or 'none' for random init\n");
-		fprintf(stderr,"  move_prob_type: movement probability type (default, uneven-sin)\n");
+		fprintf(stderr,"  move_prob_type: movement probability type\n");
+		fprintf(stderr,"    - 'default': no parameters needed\n");
+		fprintf(stderr,"    - 'uneven-sin': requires gamma parameter\n");
+		fprintf(stderr,"    - 'director-based-sin': requires gamma and G parameters\n");
 		fprintf(stderr,"  save_interval: save every N steps (0 = no intermediate saves, default = 0)\n");
+		fprintf(stderr,"  parameters: depend on potential type (gamma for uneven-sin, gamma and G for director-based-sin)\n");
 		return 1;
 	}
 	
@@ -442,11 +503,37 @@ int main(int argc, char **argv)
 	}
 	
 	// Handle save interval
-	if(argc == 8) {
+	if(argc >= 8) {
 		sscanf(argv[7], "%ld", &SaveInterval);
 	} else {
 		SaveInterval = 0; // Default: no intermediate saves
 	}
+	
+	// Initialize default values for parameters
+	Gamma = -0.5; // Default gamma value
+	G = 0.3; // Default G value
+	
+	// Handle parameters based on potential type
+	int param_index = 8; // Start checking for parameters from index 8
+	
+	if (strcmp(PotentialType, "uneven-sin") == 0) {
+		// uneven-sin needs gamma parameter
+		if (argc > param_index) {
+			sscanf(argv[param_index], "%lf", &Gamma);
+			param_index++;
+		}
+	} else if (strcmp(PotentialType, "director-based-sin") == 0) {
+		// director-based-sin needs gamma and G parameters
+		if (argc > param_index) {
+			sscanf(argv[param_index], "%lf", &Gamma);
+			param_index++;
+		}
+		if (argc > param_index) {
+			sscanf(argv[param_index], "%lf", &G);
+			param_index++;
+		}
+	}
+	// default type needs no extra parameters
 	
 	// Set the potential function
 	SetPotentialFunction(PotentialType);
@@ -463,6 +550,8 @@ int main(int argc, char **argv)
 	fprintf(stderr,"Run name: %s\n", RunName);
 	fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",
 	Density,NParticles,TumbRate,TotalTime);
+	fprintf(stderr,"Movement probability type: %s, Gamma: %.3f, G: %.3f, Save interval: %ld\n", 
+	PotentialType, Gamma, G, SaveInterval);
 		
 	// Initialize the simulation
 	InitialCondition();

@@ -11,5 +11,5 @@ chmod +x /Users/leabauer/Documents/code/run_4_potential.sh
 
 # Run the initialization script with correct flag
 # Note: --move-prob requires a value (default, uneven-sin)
-./run_4_potential.sh --move-prob uneven-sin 
+./run_4_potential.sh --move-prob director-based-sin #--move-prob uneven-sin 
 #--start-config --move-prob uneven-sin 

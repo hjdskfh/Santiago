@@ -6,29 +6,39 @@ from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime
 
+def create_discrete_colormap(max_val):
+    """
+    Create a discrete colormap for occupancy values from 0 to max_val
+    """
+    # Use viridis colors but make them discrete
+    viridis = plt.cm.viridis
+    colors = viridis(np.linspace(0, 1, max_val + 1))
+    return ListedColormap(colors)
+
 def extract_parameters_from_folder(folder_name):
     """
-    Extract density and tumbling rate from folder name
-    Assumes folder naming convention like: run_d0.5_t0.1 or similar
-    Modify this function based on your naming convention
+    Extract density, tumbling rate, gamma, and g from folder name
+    Assumes folder naming convention like: d0.5_t0.1_time10000_gamma-0.5_g1
     """
-    # Example patterns to match:
-    # density_0.5_tumble_0.1
-    # d0.5_t0.1_time10000
-    # You can modify this regex based on your naming convention
-    
+    # Extract basic parameters
     density_match = re.search(r'd([0-9]*\.?[0-9]+)', folder_name)
     tumble_match = re.search(r't([0-9]*\.?[0-9]+)', folder_name)
     time_match = re.search(r'time([0-9]*\.?[0-9]+)', folder_name)
+    
+    # Extract gamma and g parameters (with support for negative values)
+    gamma_match = re.search(r'gamma(-?[0-9]*\.?[0-9]+)', folder_name)
+    g_match = re.search(r'g(-?[0-9]*\.?[0-9]+)', folder_name)
     
     if density_match and tumble_match:
         density = float(density_match.group(1))
         tumble_rate = float(tumble_match.group(1))
         total_time = float(time_match.group(1)) if time_match else None
+        gamma = float(gamma_match.group(1)) if gamma_match else None
+        g = float(g_match.group(1)) if g_match else None
         
-        return density, tumble_rate, total_time
+        return density, tumble_rate, total_time, gamma, g
     
-    return None, None, None
+    return None, None, None, None, None
 
 def calculate_metrics(occupancy_data):
     """
@@ -94,10 +104,13 @@ def create_comparison_grid(results, run_date="", number=None):
     elif n_cols == 1:
         axes = axes.reshape(-1, 1)
     
-    # Find global min/max for consistent color scaling
+    # Find global min/max for consistent color scaling - discrete integer occupancy values
     all_data = [r['occupancy_data'] for r in results]
-    global_min = min(np.min(data) for data in all_data)
-    global_max = max(np.max(data) for data in all_data)
+    global_min = 0  # Occupancy starts at 0
+    global_max = int(np.max([np.max(data) for data in all_data]))  # Find actual maximum
+    
+    # Create discrete colormap
+    discrete_cmap = create_discrete_colormap(global_max)
     
     # Create a dictionary for quick lookup of results by (density, tumble_rate)
     result_dict = {(r['density'], r['tumble_rate']): r for r in results}
@@ -109,7 +122,7 @@ def create_comparison_grid(results, run_date="", number=None):
                 result = result_dict[(density, tumble_rate)]
                 data = result['occupancy_data']
                 
-                im = axes[row, col].imshow(data.T, cmap='viridis', origin='lower', 
+                im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
                                           aspect='equal', vmin=global_min, vmax=global_max)
                 #axes[row, col].set_title(rf"$\rho$={density:.2f}, $\alpha$={tumble_rate:.2f}", 
                 #                        fontsize=10)
@@ -161,23 +174,48 @@ def create_comparison_grid(results, run_date="", number=None):
     fig.text(tumble_x, tumble_y, r'Tumble Rate $\alpha$', fontsize=20, fontweight='bold', 
              ha='center', va='center')
     cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
-    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level')
+    ticks = list(range(global_min, global_max + 1))  # Integer ticks from min to max
+    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
     cbar.set_label('Occupancy Level', fontsize=16, fontweight='bold')
+    cbar.set_ticklabels([str(i) for i in ticks])
     cbar.ax.tick_params(labelsize=14)
 
     # Create title with date information
     # Get the total time from the first result (assuming all have the same total time)
     first_result = next(iter(results), None)
     total_time = first_result['totaltime'] if first_result and first_result['totaltime'] is not None else "Unknown"
+    gamma = first_result['gamma'] if first_result and first_result['gamma'] is not None else None
+    g = first_result['g'] if first_result and first_result['g'] is not None else None
+    
+    # Build parameter string for title
+    param_str = ""
+    
+    # Extract potential type from run directory name
+    potential_type = None
+    if "uneven-sin" in run_date:
+        potential_type = "Potential 1: Uneven sinusoidal move probability"
+    elif "director-based-sin" in run_date:
+        potential_type = "Potential 2: Director based move probability (uneven sinus)"
+    elif "default" in run_date:
+        potential_type = "No potential (move probability = 1)"
+    
+    # Add potential type to parameter string
+    if potential_type:
+        param_str += f", {potential_type}"
+    
+    if gamma is not None:
+        param_str += f", γ={gamma}"
+    if g is not None:
+        param_str += f", g={g}"
     
     # Add title as text on the figure for better control
     plt.figtext(0.5, 0.98, 'Parameter Sweep Comparison Grid', 
                 fontsize=40, fontweight='bold', ha='center')
     if run_date:
-        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Run Date: {run_date}, Depicted Step: {number if number is not None else "Unknown"}', 
+        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Run Date: {run_date[:9]}, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
                 fontsize=18, ha='center')
     else:
-        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Depicted Step: {number if number is not None else "Unknown"}', 
+        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
                     fontsize=18, ha='center')
     
     # Create filename with date information
@@ -185,6 +223,7 @@ def create_comparison_grid(results, run_date="", number=None):
         filename = f'analysis/comp_{run_date}__{number if number is not None else "unknown"}.png'
     else:
         filename = f'analysis/comp_{number if number is not None else "unknown"}.png'
+    
     
     plt.savefig(filename, dpi=300, bbox_inches='tight')
     print(f"Comparison grid saved to '{filename}'")
@@ -227,7 +266,7 @@ def load_occupancy_data(folder_path, time_step):
 def process_folder_for_sweep(folder_path, time_step):
     """Process a single folder for parameter sweep analysis."""
     folder_name = os.path.basename(folder_path)
-    density, tumble_rate, total_time = extract_parameters_from_folder(folder_name)
+    density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(folder_name)
     
     if density is None or tumble_rate is None:
         return None
@@ -246,6 +285,8 @@ def process_folder_for_sweep(folder_path, time_step):
         'density': density,
         'tumble_rate': tumble_rate,
         'totaltime': total_time,
+        'gamma': gamma,
+        'g': g,
         'occupancy_data': data,
         **metrics
     }
@@ -329,7 +370,10 @@ def print_single_heatmap(file_path=None, data=None, title=None, save_path=None, 
             raise ValueError("Either file_path or data must be provided")
         
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        im = ax.imshow(plot_data.T, cmap='viridis', origin='lower', aspect='equal')
+        max_val = int(np.max(plot_data))
+        discrete_cmap = create_discrete_colormap(max_val)
+        im = ax.imshow(plot_data, cmap=discrete_cmap, origin='lower', aspect='equal', 
+                       vmin=0, vmax=max_val)
         
         if title:
             ax.set_title(title)
@@ -343,7 +387,9 @@ def print_single_heatmap(file_path=None, data=None, title=None, save_path=None, 
         
         ax.set_xlabel('X Position')
         ax.set_ylabel('Y Position')
-        plt.colorbar(im, ax=ax, label='Occupancy Level')
+        ticks = list(range(0, max_val + 1))  # Integer ticks from 0 to max
+        cbar = plt.colorbar(im, ax=ax, label='Occupancy Level', ticks=ticks)
+        cbar.set_ticklabels([str(i) for i in ticks])
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -455,7 +501,7 @@ def visualize_time_evolution(directory_path, save_dir=None, show_individual=Fals
     
     # Extract parameters from directory name
     dir_name = os.path.basename(directory_path)
-    density, tumble_rate, total_time = extract_parameters_from_folder(dir_name)
+    density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
     
     # Create output directory if requested
     if save_dir:
@@ -509,9 +555,12 @@ def create_evolution_grid(all_data, time_files, dir_name, density, tumble_rate, 
     elif n_cols == 1:
         axes = axes.reshape(-1, 1)
     
-    # Find global min/max for consistent color scaling
-    global_min = min(np.min(data) for data in all_data)
-    global_max = max(np.max(data) for data in all_data)
+    # Find global min/max for consistent color scaling - discrete integer occupancy values
+    global_min = 0  # Occupancy starts at 0
+    global_max = int(np.max([np.max(data) for data in all_data]))  # Find actual maximum
+    
+    # Create discrete colormap
+    discrete_cmap = create_discrete_colormap(global_max)
     
     # Plot each selected time point
     for i, idx in enumerate(indices):
@@ -521,7 +570,7 @@ def create_evolution_grid(all_data, time_files, dir_name, density, tumble_rate, 
         time_step, _ = time_files[idx]
         data = all_data[idx]
         
-        im = axes[row, col].imshow(data.T, cmap='viridis', origin='lower', 
+        im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
                                   aspect='equal', vmin=global_min, vmax=global_max)
         axes[row, col].set_title(f"Step {time_step}", fontsize=12)
         axes[row, col].set_xticks([])
@@ -536,7 +585,9 @@ def create_evolution_grid(all_data, time_files, dir_name, density, tumble_rate, 
     # Add colorbar
     fig.subplots_adjust(right=0.9)
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level')
+    ticks = list(range(global_min, global_max + 1))  # Integer ticks from min to max
+    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
+    cbar.set_ticklabels([str(i) for i in ticks])
     
     # Add title
     if density is not None and tumble_rate is not None:

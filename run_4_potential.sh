@@ -48,9 +48,11 @@ while [[ $# -gt 0 ]]; do
             echo "Unknown option: $1"
             echo "Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N]"
             echo "  --output-dir DIR: Use custom output directory instead of 'runs'"
-            echo "  --move-prob TYPE: Specify movement probability type (default, uneven-sin)"
+            echo "  --move-prob TYPE: Specify movement probability type (default, uneven-sin, director-based-sin)"
             echo "  --start-config: Create start configuration"
             echo "  --save-interval N: Save every N steps for time evolution analysis"
+            echo "Note: Gamma and G parameters are set in the script's parameter section"
+        
             exit 1
             ;;
     esac
@@ -108,12 +110,16 @@ echo "Starting parameter sweep..."
 
 # ------------ PARAMETER SETTINGS ------------
 # Parameter ranges - modify these as needed
-densities=(0.7)
-#densities=(0.5 0.6 0.7 0.9)  # Added spacing between values
-#tumble_rates=(0.001 0.005 0.01 0.05 0.1 0.2)
-tumble_rates=(0.001 0.005)
+#densities=(0.7)
+densities=(0.5 0.6 0.7 0.9)  # Added spacing between values
+tumble_rates=(0.001 0.005 0.01 0.05 0.1 0.2)
+#tumble_rates=(0.001 0.005)
 total_time=10000
 start_tumble_rate=0.005
+
+# Potential-specific parameters (modify as needed)
+gamma=-0.5  # For uneven-sin and director-based-sin potentials
+g=1       # For director-based-sin potential only
 
 # Counter for progress
 total_runs=$((${#densities[@]} * ${#tumble_rates[@]}))
@@ -125,7 +131,18 @@ for density in "${densities[@]}"; do
     if [ "$USE_START_CONFIG" = true ]; then
         start_name="$RUNS_DIR/START_d${density}_t${start_tumble_rate}_time${total_time}"
         echo "[Creating start condition] Running: density=$density, tumble_rate=$start_tumble_rate, run_name=$start_name"
-        ./lattice2D-Lea-4-potential $density $start_tumble_rate $total_time $start_name none $MOVE_PROB $SAVE_INTERVAL 
+        
+        # Build command for start configuration based on potential type
+        start_cmd="./lattice2D-Lea-4-potential $density $start_tumble_rate $total_time $start_name none $MOVE_PROB $SAVE_INTERVAL"
+        
+        # Add potential-specific parameters
+        if [ "$MOVE_PROB" = "uneven-sin" ]; then
+            start_cmd="$start_cmd $gamma"
+        elif [ "$MOVE_PROB" = "director-based-sin" ]; then
+            start_cmd="$start_cmd $gamma $g"
+        fi
+        
+        $start_cmd 
         
         if [ $? -ne 0 ]; then
             echo "Error: Failed to create start configuration for density $density"
@@ -137,25 +154,34 @@ for density in "${densities[@]}"; do
         current_run=$((current_run + 1))
         
         # Create run name and put it in the runs directory
-        run_name="$RUNS_DIR/d${density}_t${tumble_rate}_time${total_time}"
+        run_name="$RUNS_DIR/d${density}_t${tumble_rate}_time${total_time}_gamma${gamma}_g${g}"
         
         echo "[$current_run/$total_runs] Running: density=$density, tumble_rate=$tumble_rate, run_name=$run_name"
         
         # Run the simulation
+        initial_file=none
         if [ "$USE_START_CONFIG" = true ]; then
-            # Find the highest numbered occupancy file (excluding initial condition -1)
             highest_file=$(ls "${start_name}"/Occupancy_*.dat 2>/dev/null | grep -v "Occupancy_-1.dat" | sort -V | tail -1)
             if [ -n "$highest_file" ]; then
+                initial_file="$highest_file"
                 echo "Using initial file: $highest_file"
-                ./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name "$highest_file" $MOVE_PROB $SAVE_INTERVAL
             else
                 echo "Warning: No final occupancy files found in $start_name, using random initialization"
-                ./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name none $MOVE_PROB $SAVE_INTERVAL
             fi
-        else
-            # Use random initialization (no initial file)
-            ./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name none $MOVE_PROB $SAVE_INTERVAL
         fi
+        
+        # Run the simulation - build command based on potential type
+        cmd="./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name $initial_file $MOVE_PROB $SAVE_INTERVAL"
+        
+        # Add potential-specific parameters
+        if [ "$MOVE_PROB" = "uneven-sin" ]; then
+            cmd="$cmd $gamma"
+        elif [ "$MOVE_PROB" = "director-based-sin" ]; then
+            cmd="$cmd $gamma $g"
+        fi
+        # No extra parameters needed for "default" type
+        
+        $cmd
         
         if [ $? -ne 0 ]; then
             echo "Warning: Simulation failed for $run_name"
@@ -169,4 +195,10 @@ echo "Parameter sweep completed in directory: $RUNS_DIR"
 echo "Configuration used:"
 echo "  - Movement probability type: $MOVE_PROB"
 echo "  - Start config: $USE_START_CONFIG"
+if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
+    echo "  - Gamma parameter: $gamma"
+fi
+if [ "$MOVE_PROB" = "director-based-sin" ]; then
+    echo "  - G parameter: $g"
+fi
 echo "Run 'python visualize_simulation.py $RUNS_DIR' to create visualizations"
