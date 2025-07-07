@@ -212,7 +212,7 @@ def create_comparison_grid(results, run_date="", number=None):
     plt.figtext(0.5, 0.98, 'Parameter Sweep Comparison Grid', 
                 fontsize=40, fontweight='bold', ha='center')
     if run_date:
-        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Run Date: {run_date[:9]}, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
+        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Run Date: {run_date[:8]}, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
                 fontsize=18, ha='center')
     else:
         plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
@@ -607,6 +607,315 @@ def create_evolution_grid(all_data, time_files, dir_name, density, tumble_rate, 
     
     plt.close()
 
+def print_moving_particles(runs_dir="runs"):
+    """
+    Analyze and print movement statistics from simulation results, with plots
+    """
+    results = find_files_in_directory(runs_dir, pattern="movement_stats.txt")
+    
+    if not results:
+        print("No movement statistics files found!")
+        return
+
+    run_date = ""
+    if "run_" in runs_dir:
+        timestamp = os.path.basename(runs_dir)[4:]  # Remove "run_" prefix
+        try:
+            run_date = datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y%m%d_%H%M%S")
+        except:
+            run_date = timestamp.replace(":", "").replace(" ", "_")
+    
+    # Create analysis directory for plots
+    os.makedirs('analysis', exist_ok=True)
+    
+    all_data = []  # Store all data for combined plots
+    
+    for subdir_name, full_path, files in results:
+        # Extract parameters from directory name
+        density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(subdir_name)
+        
+        if density is None or tumble_rate is None:
+            continue
+            
+        # Load movement statistics file
+        stats_file = os.path.join(full_path, "movement_stats.txt")
+        if os.path.exists(stats_file):
+            try:
+                # Read the movement statistics
+                data = np.loadtxt(stats_file, skiprows=1)  # Skip header
+                if data.size > 0:
+                    if data.ndim == 1:  # Single row
+                        timesteps = np.array([data[0]])
+                        moving_counts = np.array([data[1]])
+                    else:  # Multiple rows
+                        timesteps = data[:, 0]
+                        moving_counts = data[:, 1]
+                    
+                    # Store data for plotting
+                    all_data.append({
+                        'name': subdir_name,
+                        'density': density,
+                        'tumble_rate': tumble_rate,
+                        'gamma': gamma,
+                        'g': g,
+                        'timesteps': timesteps,
+                        'moving_counts': moving_counts
+                    })
+     
+                    # Create individual plot for this simulation
+                    create_individual_movement_plot(timesteps, moving_counts, subdir_name, 
+                                                  density, tumble_rate, gamma, g, run_date)
+                
+            except Exception as e:
+                print(f"Error reading {stats_file}: {e}")
+    
+    if all_data:
+        # Create combined plots
+        create_combined_movement_plots(all_data, run_date)
+        print(f"\nMovement analysis complete! Created {len(all_data)} individual plots and combined plots.")
+    else:
+        print("No valid movement data found!")
+
+def create_individual_movement_plot(timesteps, moving_counts, name, density, tumble_rate, gamma, g, run_date):
+    """Create an individual plot for one simulation's movement data"""
+    
+    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    
+    # Use line plot without markers for better performance with many points
+    if len(timesteps) > 100:
+        ax.plot(timesteps, moving_counts, 'b-', linewidth=1.5)
+    else:
+        ax.plot(timesteps, moving_counts, 'b-', linewidth=2, marker='o', markersize=4)
+    
+    ax.set_xlabel('Time Step', fontsize=12)
+    ax.set_ylabel('Number of Moving Particles', fontsize=12)
+    
+    # Create detailed title
+    title = f'Moving Particles Over Time\n'
+    title += f'Density={density:.3f}, Tumble Rate={tumble_rate:.3f}'
+    if gamma is not None:
+        title += f', γ={gamma:.3f}'
+    if g is not None:
+        title += f', G={g:.3f}'
+    
+    ax.set_title(title, fontsize=14)
+    ax.grid(True, alpha=0.3)
+    
+    # Add statistics as text
+    mean_val = np.mean(moving_counts)
+    std_val = np.std(moving_counts)
+    ax.text(0.02, 0.98, f'Mean: {mean_val:.1f}\nStd: {std_val:.1f}', 
+           transform=ax.transAxes, verticalalignment='top',
+           bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    # Save plot with optimized settings
+    filename = f'analysis/movement_{run_date}_{name}.png'
+    plt.savefig(filename, dpi=150, bbox_inches='tight', facecolor='white')  # Reduced DPI for smaller files
+    plt.close()
+    print(f"Individual movement plot saved: {filename}")
+
+def create_combined_movement_plots(all_data, run_date=""):
+    """Create combined plots showing all simulations together"""
+    
+    # Plot 1: All trajectories on one plot
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    for i, data in enumerate(all_data):
+        label = f'ρ={data["density"]:.2f}, α={data["tumble_rate"]:.3f}'
+        ax.plot(data['timesteps'], data['moving_counts'], 
+               linewidth=2, marker='o', markersize=3, label=label, alpha=0.8)
+    
+    ax.set_xlabel('Time Step', fontsize=12)
+    ax.set_ylabel('Number of Moving Particles', fontsize=12)
+    ax.set_title('Movement Comparison: All Simulations', fontsize=16, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    plt.tight_layout()
+    if run_date:
+        filename = f'analysis/movement_{run_date}_all_trajectories.png'
+    else:
+        filename = 'analysis/movement_all_trajectories.png'
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Combined trajectories plot saved: {filename}")
+    
+    # Plot 2: Average movement vs density (if we have multiple densities)
+    densities = sorted(list(set(d['density'] for d in all_data)))
+    tumble_rates = sorted(list(set(d['tumble_rate'] for d in all_data)))
+    
+    if len(tumble_rates) > 1:
+        create_movement_plots_by_tumble_rate(all_data, run_date)
+
+def create_movement_plots_by_tumble_rate(all_data, run_date=""):
+    """Create separate plots for each tumble rate, showing different densities"""
+    
+    # Get unique tumble rates
+    tumble_rates = sorted(list(set(d['tumble_rate'] for d in all_data)))
+    
+    for tumble_rate in tumble_rates:
+        # Filter data for this tumble rate
+        tumble_data = [d for d in all_data if abs(d['tumble_rate'] - tumble_rate) < 1e-6]
+        
+        if not tumble_data:
+            continue
+            
+        fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+        
+        # Plot each density for this tumble rate
+        for data in tumble_data:
+            label = f'ρ={data["density"]:.3f}'
+            # Use different markers and colors for different densities
+            ax.plot(data['timesteps'], data['moving_counts'], 
+                   linewidth=2, marker='o', markersize=3, label=label, alpha=0.8)
+        
+        ax.set_xlabel('Time Step', fontsize=12)
+        ax.set_ylabel('Number of Moving Particles', fontsize=12)
+        ax.set_title(f'Movement Over Time: Tumble Rate α={tumble_rate:.3f}', 
+                    fontsize=16, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        
+        plt.tight_layout()
+        if run_date:
+            filename = f'analysis/movement_{run_date}_tumble_rate_{tumble_rate:.3f}.png'
+        else:
+            filename = f'analysis/movement_tumble_rate_{tumble_rate:.3f}.png'
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {filename}")
+
+def filter_results_by_parameters(results, density=None, tumble_rate=None, gamma=None, g=None):
+    """
+    Filter results by specific parameter values
+    
+    Args:
+        results: List of result dictionaries
+        density: Target density value (e.g., 0.01, 0.5) or None for any
+        tumble_rate: Target tumble rate (e.g., 0.001, 0.01) or None for any
+        gamma: Target gamma value or None for any
+        g: Target G value or None for any
+    
+    Returns:
+        Filtered list of results
+    """
+    filtered = []
+    
+    for result in results:
+        # Check density
+        if density is not None and abs(result['density'] - density) > 1e-6:
+            continue
+            
+        # Check tumble rate
+        if tumble_rate is not None and abs(result['tumble_rate'] - tumble_rate) > 1e-6:
+            continue
+            
+        # Check gamma
+        if gamma is not None and result['gamma'] is not None and abs(result['gamma'] - gamma) > 1e-6:
+            continue
+            
+        # Check g
+        if g is not None and result['g'] is not None and abs(result['g'] - g) > 1e-6:
+            continue
+        
+        filtered.append(result)
+    
+    return filtered
+
+def explore_results(results):
+    """
+    Interactive function to explore and filter results
+    """
+    print(f"\nFound {len(results)} total results")
+    
+    # Show available parameter values
+    densities = sorted(list(set(r['density'] for r in results)))
+    tumble_rates = sorted(list(set(r['tumble_rate'] for r in results)))
+    gammas = sorted(list(set(r['gamma'] for r in results if r['gamma'] is not None)))
+    gs = sorted(list(set(r['g'] for r in results if r['g'] is not None)))
+    
+    print(f"Available densities: {densities}")
+    print(f"Available tumble rates: {tumble_rates}")
+    if gammas:
+        print(f"Available gamma values: {gammas}")
+    if gs:
+        print(f"Available G values: {gs}")
+    
+    # Interactive filtering
+    while True:
+        print("\nFiltering options:")
+        print("1. Filter by density")
+        print("2. Filter by tumble rate")
+        print("3. Filter by gamma")
+        print("4. Filter by G")
+        print("5. Show current results")
+        print("6. Reset filters")
+        print("7. Exit")
+        
+        choice = input("Enter choice (1-7): ").strip()
+        
+        if choice == '1':
+            try:
+                target_density = float(input(f"Enter density value {densities}: "))
+                filtered = filter_results_by_parameters(results, density=target_density)
+                print(f"Found {len(filtered)} results with density = {target_density}")
+                for r in filtered:
+                    print(f"  Folder: {os.path.basename(r['folder'])}")
+            except ValueError:
+                print("Invalid density value")
+                
+        elif choice == '2':
+            try:
+                target_tumble = float(input(f"Enter tumble rate {tumble_rates}: "))
+                filtered = filter_results_by_parameters(results, tumble_rate=target_tumble)
+                print(f"Found {len(filtered)} results with tumble rate = {target_tumble}")
+                for r in filtered:
+                    print(f"  Folder: {os.path.basename(r['folder'])}")
+            except ValueError:
+                print("Invalid tumble rate value")
+                
+        elif choice == '3':
+            if not gammas:
+                print("No gamma values found in results")
+                continue
+            try:
+                target_gamma = float(input(f"Enter gamma value {gammas}: "))
+                filtered = filter_results_by_parameters(results, gamma=target_gamma)
+                print(f"Found {len(filtered)} results with gamma = {target_gamma}")
+                for r in filtered:
+                    print(f"  Folder: {os.path.basename(r['folder'])}")
+            except ValueError:
+                print("Invalid gamma value")
+                
+        elif choice == '4':
+            if not gs:
+                print("No G values found in results")
+                continue
+            try:
+                target_g = float(input(f"Enter G value {gs}: "))
+                filtered = filter_results_by_parameters(results, g=target_g)
+                print(f"Found {len(filtered)} results with G = {target_g}")
+                for r in filtered:
+                    print(f"  Folder: {os.path.basename(r['folder'])}")
+            except ValueError:
+                print("Invalid G value")
+                
+        elif choice == '5':
+            print(f"\nCurrent results ({len(results)} total):")
+            for i, r in enumerate(results):
+                print(f"  {i+1}. {os.path.basename(r['folder'])} - "
+                      f"ρ={r['density']:.3f}, α={r['tumble_rate']:.3f}")
+                      
+        elif choice == '6':
+            # Reset to original results - you'd need to reload
+            print("Filters reset (reload results to see all)")
+            
+        elif choice == '7':
+            break
+            
+        else:
+            print("Invalid choice")
+
 if __name__ == "__main__":
     import sys
     
@@ -642,14 +951,15 @@ if __name__ == "__main__":
     print("4. View all heatmaps in directory") 
     print("5. View single heatmap from file path")
     print("6. View time evolution of single configuration")
+    print("7. Analyze movement statistics")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-6): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6']:
+            mode_choice = input("\nEnter your choice (1-7): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7']:
                 break
             else:
-                print("Please enter 1, 2, 3, 4, 5, or 6.")
+                print("Please enter 1, 2, 3, 4, 5, 6, or 7.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -736,3 +1046,8 @@ if __name__ == "__main__":
             print("Time evolution visualization complete!")
         else:
             print(f"Directory not found: {dir_path}")
+    
+    elif mode_choice == '7':
+        # Analyze movement statistics
+        print("Analyzing movement statistics...")
+        print_moving_particles(runs_dir)

@@ -39,6 +39,13 @@ long int SaveInterval; // Interval for saving intermediate steps (0 = no interme
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
 
+// Movement tracking variables
+long int TotalTime; // Total simulation time (needed for array sizing)
+long int *MovingParticlesCount; // Array to track moving particles per timestep
+long int *MovingParticlesSteps; // Array to track which timesteps were recorded
+long int MovingParticlesSize; // Size of the tracking array
+int TrackMovement; // Flag: 1 = track movement, 0 = don't track
+
 // Function pointer for potential calculation
 double (*CalculateMoveProb)(int x, int y, int dir_x, int dir_y);
 
@@ -204,6 +211,75 @@ void SetPotentialFunction(const char* potential_type) {
     // If we get here, the potential type was not found
     fprintf(stderr, "Error: Unknown movement probability type '%s'\n", potential_type);
     exit(1);
+}
+
+// Initialize movement tracking array
+void InitializeMovementTracking(long int total_time) {
+    if (!TrackMovement || total_time <= 0 || SaveInterval <= 0) {
+        MovingParticlesSize = 0;
+        MovingParticlesCount = NULL;
+        MovingParticlesSteps = NULL;
+        if (TrackMovement && SaveInterval <= 0) {
+            fprintf(stderr, "Movement tracking disabled: SaveInterval must be > 0 for tracking\n");
+        } else if (!TrackMovement) {
+            fprintf(stderr, "Movement tracking disabled\n");
+        }
+        return;
+    }
+    
+    // Calculate how many tracking points we'll have
+    // We track: step 0, then steps at SaveInterval, 2*SaveInterval, ..., up to total_time
+    MovingParticlesSize = (total_time / SaveInterval) + 1;
+    
+    MovingParticlesCount = (long int*)calloc(MovingParticlesSize, sizeof(long int));
+    MovingParticlesSteps = (long int*)calloc(MovingParticlesSize, sizeof(long int));
+    
+    if (MovingParticlesCount == NULL || MovingParticlesSteps == NULL) {
+        fprintf(stderr, "Error: Could not allocate memory for movement tracking\n");
+        exit(1);
+    }
+    
+    fprintf(stderr, "Movement tracking enabled: every %ld steps, %ld tracking points\n", 
+            SaveInterval, MovingParticlesSize);
+}
+
+// Write movement statistics to file
+void WriteMovementStats(void) {
+    if (!TrackMovement || MovingParticlesCount == NULL || MovingParticlesSize == 0) {
+        return; // No movement tracking was enabled
+    }
+    
+    char filename[256];
+    sprintf(filename, "%s/movement_stats.txt", RunName);
+    
+    FILE *f = fopen(filename, "w");
+    if (f == NULL) {
+        fprintf(stderr, "Error: Could not open %s for writing\n", filename);
+        return;
+    }
+    
+    fprintf(f, "# Timestep MovingParticles\n");
+    for (long int i = 0; i < MovingParticlesSize; i++) {
+        if (MovingParticlesSteps[i] > 0) { // Only write recorded timesteps (step 1 and above)
+            fprintf(f, "%ld %ld\n", MovingParticlesSteps[i], MovingParticlesCount[i]);
+        }
+    }
+    
+    fclose(f);
+    fprintf(stderr, "Movement statistics written to %s\n", filename);
+}
+
+// Cleanup movement tracking memory
+void CleanupMovementTracking(void) {
+    if (MovingParticlesCount != NULL) {
+        free(MovingParticlesCount);
+        MovingParticlesCount = NULL;
+    }
+    if (MovingParticlesSteps != NULL) {
+        free(MovingParticlesSteps);
+        MovingParticlesSteps = NULL;
+    }
+    MovingParticlesSize = 0;
 }
 
 // Reorders each time the order of the particles
@@ -376,6 +452,7 @@ void Iterate(long int step)
 	long int n;
 	int iini,jini,inew,jnew;
 	int d;
+	long int moving_particles_this_step = 0; // Counter for particles that moved this step
 	
 	// Change the order over which the particles are updated
 	shuffle(ParticleOrder,NParticles);
@@ -408,6 +485,7 @@ void Iterate(long int step)
 				PosY[n]=jnew;
 				Occupancy[iini][jini]-=1;
 				Occupancy[inew][jnew]+=1;
+				moving_particles_this_step++; // Increment counter for moved particles
 			}
 		} // If not, do nothing
 		else
@@ -421,6 +499,31 @@ void Iterate(long int step)
 			DirectorX[n]=UnitX[d];
 			DirectorY[n]=UnitY[d];
 		}
+	}
+	
+	// Store movement count if tracking is enabled 
+	if (TrackMovement && MovingParticlesCount != NULL && SaveInterval > 0) {
+		// Record step 1, then every SaveInterval steps (SaveInterval, 2*SaveInterval, etc.)
+		if (step == 1 || step % SaveInterval == 0) {
+			long int track_index;
+			if (step == 1) {
+				track_index = 0; // First entry is step 1
+			} else {
+				track_index = step / SaveInterval; // Subsequent entries
+			}
+			
+			if (track_index >= 0 && track_index < MovingParticlesSize) {
+				MovingParticlesCount[track_index] = moving_particles_this_step;
+				MovingParticlesSteps[track_index] = step;
+			}
+		}
+	}
+	
+	// Print movement statistics periodically
+	if (step % 1000 == 0) {
+		fprintf(stderr, "Step %ld: %ld particles moved (%.2f%%)\n", 
+		        step, moving_particles_this_step, 
+		        (100.0 * moving_particles_this_step) / NParticles);
 	}
 }
 
@@ -453,19 +556,19 @@ void WriteConfig(long int index)
 
 int main(int argc, char **argv)
 {
-	long int TotalTime; // Total simulation time, in steps
 	long int step;
 	
 	// Check command line arguments - now with smarter parameter handling
 	if(argc < 5)
 	{
-		fprintf(stderr,"Usage: %s <density> <tumbling_rate> <total_time> <run_name> [initial_file|none] [move_prob_type] [save_interval] [parameters...]\n", argv[0]);
+		fprintf(stderr,"Usage: %s <density> <tumbling_rate> <total_time> <run_name> [initial_file|none] [move_prob_type] [save_interval] [track_movement] [parameters...]\n", argv[0]);
 		fprintf(stderr,"  initial_file: path to initial occupancy matrix file, or 'none' for random init\n");
 		fprintf(stderr,"  move_prob_type: movement probability type\n");
 		fprintf(stderr,"    - 'default': no parameters needed\n");
 		fprintf(stderr,"    - 'uneven-sin': requires gamma parameter\n");
 		fprintf(stderr,"    - 'director-based-sin': requires gamma and G parameters\n");
 		fprintf(stderr,"  save_interval: save every N steps (0 = no intermediate saves, default = 0)\n");
+		fprintf(stderr,"  track_movement: 1 = track moving particles at save intervals, 0 = no tracking (default = 0)\n");
 		fprintf(stderr,"  parameters: depend on potential type (gamma for uneven-sin, gamma and G for director-based-sin)\n");
 		return 1;
 	}
@@ -506,7 +609,21 @@ int main(int argc, char **argv)
 	if(argc >= 8) {
 		sscanf(argv[7], "%ld", &SaveInterval);
 	} else {
-		SaveInterval = 0; // Default: no intermediate saves
+		SaveInterval = 0; // Default: will be set based on tumbling rate
+	}
+	
+	// If SaveInterval is 0 or not given, use 1/TumbRate as default
+	if(SaveInterval == 0) {
+		SaveInterval = (long int)(1.0 / TumbRate);
+		if(SaveInterval < 1) SaveInterval = 1; // Minimum interval of 1
+		fprintf(stderr, "SaveInterval not specified or 0, using 1/TumbRate = %ld\n", SaveInterval);
+	}
+	
+	// Handle movement tracking flag
+	if(argc >= 9) {
+		sscanf(argv[8], "%d", &TrackMovement);
+	} else {
+		TrackMovement = 0; // Default: no movement tracking
 	}
 	
 	// Initialize default values for parameters
@@ -514,7 +631,7 @@ int main(int argc, char **argv)
 	G = 0.3; // Default G value
 	
 	// Handle parameters based on potential type
-	int param_index = 8; // Start checking for parameters from index 8
+	int param_index = 9; // Start checking for parameters from index 9 (after tracking flag)
 	
 	if (strcmp(PotentialType, "uneven-sin") == 0) {
 		// uneven-sin needs gamma parameter
@@ -552,15 +669,22 @@ int main(int argc, char **argv)
 	Density,NParticles,TumbRate,TotalTime);
 	fprintf(stderr,"Movement probability type: %s, Gamma: %.3f, G: %.3f, Save interval: %ld\n", 
 	PotentialType, Gamma, G, SaveInterval);
+	fprintf(stderr,"Movement tracking: %s%s\n", 
+	TrackMovement ? "enabled" : "disabled",
+	(TrackMovement && SaveInterval > 0) ? "" : (TrackMovement ? " (but SaveInterval=0, so disabled)" : ""));
 		
 	// Initialize the simulation
 	InitialCondition();
+	
+	// Initialize movement tracking
+	InitializeMovementTracking(TotalTime);
 	
 	// Print actual density after initialization
 	fprintf(stderr,"Actual Parameters: NParticles %ld, Density %lf\n",
 	NParticles,(1.0*NParticles)/(Lx*Ly));
 	
 	WriteConfig(-1);
+	
 	//Loop
 	for(step=1;step<=TotalTime;step++)
 	{
@@ -575,4 +699,11 @@ int main(int argc, char **argv)
 	}
 	WriteConfig(TotalTime);
 	
+	// Write movement statistics before cleanup
+	WriteMovementStats();
+	
+	// Cleanup movement tracking if allocated
+	CleanupMovementTracking();
+	
+	return 0;
 }

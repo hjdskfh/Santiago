@@ -8,6 +8,7 @@ OUTPUT_DIR=""
 MOVE_PROB="default"
 USE_START_CONFIG=false  # Default behavior: random configuration for each run
 SAVE_INTERVAL=0  # Default: no intermediate saves
+TRACK_MOVEMENT=0  # Default: no movement tracking
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -44,13 +45,19 @@ while [[ $# -gt 0 ]]; do
             echo "Saving every $SAVE_INTERVAL steps"
             shift 2
             ;;
+        --track-movement)
+            TRACK_MOVEMENT=1
+            echo "Movement tracking enabled"
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N]"
+            echo "Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N] [--track-movement]"
             echo "  --output-dir DIR: Use custom output directory instead of 'runs'"
             echo "  --move-prob TYPE: Specify movement probability type (default, uneven-sin, director-based-sin)"
             echo "  --start-config: Create start configuration"
             echo "  --save-interval N: Save every N steps for time evolution analysis"
+            echo "  --track-movement: Enable movement tracking at save intervals"
             echo "Note: Gamma and G parameters are set in the script's parameter section"
         
             exit 1
@@ -83,6 +90,9 @@ fi
 if [ "$USE_START_CONFIG" = true ]; then
     FLAGS="${FLAGS}_start-config"
 fi
+if [ "$TRACK_MOVEMENT" = "1" ]; then
+    FLAGS="${FLAGS}_track-movement"
+fi
 if [ -n "$OUTPUT_DIR" ]; then
     FLAGS="${FLAGS}_custom-dir"
 fi
@@ -111,8 +121,8 @@ echo "Starting parameter sweep..."
 # ------------ PARAMETER SETTINGS ------------
 # Parameter ranges - modify these as needed
 #densities=(0.7)
-densities=(0.5 0.6 0.7 0.9)  # Added spacing between values
-tumble_rates=(0.001 0.005 0.01 0.05 0.1 0.2)
+densities=(0.5 0.6 0.7)  # Added spacing between values
+tumble_rates=(0.001 0.005 0.01 0.05 0.1)
 #tumble_rates=(0.001 0.005)
 total_time=10000
 start_tumble_rate=0.005
@@ -133,7 +143,7 @@ for density in "${densities[@]}"; do
         echo "[Creating start condition] Running: density=$density, tumble_rate=$start_tumble_rate, run_name=$start_name"
         
         # Build command for start configuration based on potential type
-        start_cmd="./lattice2D-Lea-4-potential $density $start_tumble_rate $total_time $start_name none $MOVE_PROB $SAVE_INTERVAL"
+        start_cmd="./lattice2D-Lea-4-potential $density $start_tumble_rate $total_time $start_name none $MOVE_PROB $SAVE_INTERVAL $TRACK_MOVEMENT"
         
         # Add potential-specific parameters
         if [ "$MOVE_PROB" = "uneven-sin" ]; then
@@ -171,7 +181,7 @@ for density in "${densities[@]}"; do
         fi
         
         # Run the simulation - build command based on potential type
-        cmd="./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name $initial_file $MOVE_PROB $SAVE_INTERVAL"
+        cmd="./lattice2D-Lea-4-potential $density $tumble_rate $total_time $run_name $initial_file $MOVE_PROB $SAVE_INTERVAL $TRACK_MOVEMENT"
         
         # Add potential-specific parameters
         if [ "$MOVE_PROB" = "uneven-sin" ]; then
@@ -195,6 +205,8 @@ echo "Parameter sweep completed in directory: $RUNS_DIR"
 echo "Configuration used:"
 echo "  - Movement probability type: $MOVE_PROB"
 echo "  - Start config: $USE_START_CONFIG"
+echo "  - Save interval: $SAVE_INTERVAL"
+echo "  - Movement tracking: $TRACK_MOVEMENT"
 if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
     echo "  - Gamma parameter: $gamma"
 fi
