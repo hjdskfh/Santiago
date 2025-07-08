@@ -26,7 +26,6 @@ int UnitY[4] = {0,1,0,-1};
 // Global dynamical arrays
 char Occupancy[Lx][Ly]; // Occupancy of each site
 float XAccumulatedFlux[Lx][Ly]; // Flux of moving particles at each site
-float SnapshotDensity[Lx]; // Accumulated density at each site
 int PosX[MaxNPart],PosY[MaxNPart]; // Position of each particle
 int DirectorX[MaxNPart],DirectorY[MaxNPart]; // Cartesian componenets of the director for each particle
 long int ParticleOrder[MaxNPart]; // Order in which particles are updated
@@ -41,7 +40,7 @@ long int NParticles; // Number of particles, computed from the density
 long int SaveInterval; // Interval for saving intermediate steps (0 = no intermediate saves)
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
-long int StartStepForCalculation; // Step at which to start calculating flux and density
+
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -386,11 +385,11 @@ void InitialCondition(void){
 		// Clear the occupancy matrix first
 		for(i = 0; i < Lx; i++)
 			for(j = 0; j < Ly; j++)
+			{
 				Occupancy[i][j] = 0;	
 				XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
-				SnapshotDensity[i] = 0; // Initialize density matrix
-	
-				
+			}
+		
 		// Load occupancy from file
 		if(!LoadOccupancyFromFile(InitialFile))
 		{
@@ -409,10 +408,11 @@ void InitialCondition(void){
 		// Clear the occupancy matrix
 		for(i=0;i<Lx;i++)
 			for(j=0;j<Ly;j++)
+			{
 				Occupancy[i][j]=0;
 				XAccumulatedFlux[i][j]=0; // Initialize flux matrix
-				SnapshotDensity[i]=0; // Initialize density matrix
-			
+			}
+		
 	#if (WALL==1)
 		// If there is a wall, put these sites as already fully occupied. We use nmax+1 to distinguish to a dynamical site
 		for(j=0;j<Ly;j++)
@@ -522,16 +522,6 @@ void Iterate(long int step){
 		}
 	}
 	
-	// Track density snapshots at save intervals (if past start step and save interval is defined)
-	if (SaveInterval > 0 && step % SaveInterval == 0) {
-		// Add current occupancy to accumulated density
-		for (int i = 0; i < Lx; i++) {
-			for (int j = 0; j < Ly; j++) {
-				SnapshotDensity[i] += (float)Occupancy[i][j];
-			}
-		}
-	}
-	
 	// Print movement statistics periodically
 	if (step % 3000 == 0) {
 		fprintf(stderr, "Step %ld\n", step);
@@ -558,25 +548,17 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
 		fclose(f);
 	}
 
-	// Write the density
-	if (track_density) {
-		sprintf(filename,"%s/SnapshotDensity_%ld.dat",RunName,index);
-		f=fopen(filename,"w");
-			for(i=0;i<Lx;i++) {
-				fprintf(f,"%.3f ",SnapshotDensity[i]);
-			}
-		fclose(f);
-	}
-
 	// Write MovingParticles
 	if (track_flux) {
-		// Write the X movement flux matrix
-		sprintf(filename,"%s/XAverageFlux_%ld.dat",RunName,index);
+		// Write the X movement flux matrix (raw accumulated values)
+		sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
 		f=fopen(filename,"w");
 		for(j=0;j<Ly;j++)
 		{
 			for(i=0;i<Lx;i++)
-				fprintf(f,"%.3f ",XAccumulatedFlux[i][j] / index);
+			{
+				fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
+			}
 			fprintf(f,"\n");
 		}
 		fclose(f);
@@ -602,7 +584,6 @@ typedef struct {
     char potential_type[50];
     long int save_interval;
     int track_movement;
-    long int start_step_calc;
     double gamma;
     double g;
     bool track_occupancy;
@@ -620,7 +601,6 @@ void InitializeDefaultParams(SimulationParams *params) {
     strcpy(params->potential_type, "default");
     params->save_interval = 0;
     params->track_movement = 0;
-    params->start_step_calc = 0;
     params->gamma = -0.5;
     params->g = 0.3;
     params->track_occupancy = true;
@@ -642,7 +622,6 @@ void ShowUsage(const char* program_name) {
     fprintf(stderr, "  --potential TYPE            Potential type: default, uneven-sin, director-based-sin\n");
     fprintf(stderr, "  --save-interval N           Save every N steps (default: 1/tumble_rate)\n");
     fprintf(stderr, "  --track-movement            Enable movement tracking as Observable\n");
-    fprintf(stderr, "  --start-calc-step N         Start calculation at step N\n");
     fprintf(stderr, "  --gamma VALUE               Gamma parameter for sin potentials (default: -0.5)\n");
     fprintf(stderr, "  --g VALUE                   G parameter for director-based-sin (default: 0.3)\n");
     fprintf(stderr, "  --track-occupancy           Track occupancy matrices (default: enabled)\n");
@@ -722,13 +701,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
         else if (strcmp(argv[i], "--track-movement") == 0) {
             params->track_movement = 1;
         }
-        else if (strcmp(argv[i], "--start-calc-step") == 0) {
-            if (i + 1 >= argc) {
-                fprintf(stderr, "Error: --start-calc-step requires a value\n");
-                return -1;
-            }
-            params->start_step_calc = atol(argv[++i]);
-        }
         else if (strcmp(argv[i], "--gamma") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --gamma requires a value\n");
@@ -797,7 +769,6 @@ int main(int argc, char **argv)
 	strcpy(PotentialType, params.potential_type);
 	SaveInterval = params.save_interval;
 	TrackMovement = params.track_movement;
-	StartStepForCalculation = params.start_step_calc;
 	Gamma = params.gamma;
 	G = params.g;
 	

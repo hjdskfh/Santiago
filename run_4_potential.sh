@@ -1,81 +1,171 @@
 #!/bin/bash
 
 # Parameter sweep script for lattice simulation
-# Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N] 
+# Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N|auto] 
 
 # Default feature flags
 OUTPUT_DIR=""
 MOVE_PROB="default"
 USE_START_CONFIG=false  # Default behavior: random configuration for each run
-SAVE_INTERVAL=0  # Default: no intermediate saves
+SAVE_INTERVAL="auto"  # Default: auto-calculate from tumble rate
 TRACK_MOVEMENT=0  # Default: no movement tracking
-CALCULATE_DENSITY_AND_FLUX=0  # Default: no density and flux calculation
+TRACK_FLUX=0  # Default: no flux tracking
+TRACK_DENSITY=0  # Default: no density tracking
+
+# Function to parse command line arguments
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --output-dir)
+                if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                    echo "Error: --output-dir requires a directory path"
+                    exit 1
+                fi
+                OUTPUT_DIR="$2"
+                echo "Using custom output directory: $OUTPUT_DIR"
+                shift 2
+                ;;
+            --move-prob)
+                if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                    echo "Error: --move-prob requires a value (default, uneven-sin, director-based-sin)"
+                    exit 1
+                fi
+                MOVE_PROB="$2"
+                echo "Using movement probability type: $MOVE_PROB"
+                shift 2
+                ;;
+            --start-config)
+                USE_START_CONFIG=true
+                echo "Creating start configuration"
+                shift
+                ;;
+            --save-interval)
+                if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                    echo "Error: --save-interval requires a number or 'auto'"
+                    exit 1
+                fi
+                SAVE_INTERVAL="$2"
+                if [ "$SAVE_INTERVAL" != "auto" ]; then
+                    echo "Saving every $SAVE_INTERVAL steps"
+                else
+                    echo "Save interval will be auto-calculated from tumble rate"
+                fi
+                shift 2
+                ;;
+            --track-movement)
+                TRACK_MOVEMENT=1
+                echo "Movement tracking enabled"
+                shift
+                ;;
+            --track-flux)
+                TRACK_FLUX=1
+                echo "Flux tracking enabled"
+                shift
+                ;;
+            --track-density)
+                TRACK_DENSITY=1
+                echo "Density tracking enabled"
+                shift
+                ;;
+            --help|-h)
+                show_usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Function to show usage information
+show_usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --output-dir DIR           Use custom output directory instead of 'runs'"
+    echo "  --move-prob TYPE           Specify movement probability type (default, uneven-sin, director-based-sin)"
+    echo "  --start-config             Create start configuration"
+    echo "  --save-interval N|auto     Save every N steps or 'auto' for 1/tumble_rate (default: auto)"
+    echo "  --track-movement           Enable movement tracking at save intervals"
+    echo "  --track-flux               Enable flux tracking (raw accumulated values)"
+    echo "  --track-density            Enable density tracking (for postprocessing)"
+    echo "  --help, -h                 Show this help message"
+    echo ""
+    echo "Note: Gamma and G parameters are set in the script's parameter section"
+}
+
+# Function to calculate save interval from tumble rate
+calculate_save_interval() {
+    local tumble_rate="$1"
+    # Use awk instead of bc for better portability
+    echo "$tumble_rate" | awk '{printf "%.0f", 1/$1}'
+}
+
+# Function to build simulation command
+build_simulation_command() {
+    local density="$1"
+    local tumble_rate="$2"
+    local total_time="$3"
+    local run_name="$4"
+    local initial_file="$5"
+    local current_save_interval="$6"
+    
+    local cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $tumble_rate --total-time $total_time --run-name $run_name"
+    
+    # Add initial file if not "none"
+    if [ "$initial_file" != "none" ]; then
+        cmd="$cmd --initial-file $initial_file"
+    fi
+    
+    # Add potential type
+    cmd="$cmd --potential $MOVE_PROB"
+    
+    # Add save interval
+    cmd="$cmd --save-interval $current_save_interval"
+    
+    # Add movement tracking
+    if [ "$TRACK_MOVEMENT" = "1" ]; then
+        cmd="$cmd --track-movement"
+    fi
+    
+    # Add flux tracking
+    if [ "$TRACK_FLUX" = "1" ]; then
+        cmd="$cmd --track-flux"
+    fi
+    
+    # Add density tracking
+    if [ "$TRACK_DENSITY" = "1" ]; then
+        cmd="$cmd --track-density"
+    fi
+    
+    # Add potential-specific parameters
+    if [ "$MOVE_PROB" = "uneven-sin" ]; then
+        cmd="$cmd --gamma $gamma"
+    elif [ "$MOVE_PROB" = "director-based-sin" ]; then
+        cmd="$cmd --gamma $gamma --g $g"
+    fi
+    
+    echo "$cmd"
+}
+
+# Function to log command for reproducibility
+log_command() {
+    local cmd="$1"
+    local run_name="$2"
+    local log_file="$run_name.cmd"
+    
+    echo "# Command executed on $(date)" > "$log_file"
+    echo "# Working directory: $(pwd)" >> "$log_file"
+    echo "# Git commit: $(git rev-parse HEAD 2>/dev/null || echo 'not available')" >> "$log_file"
+    echo "$cmd" >> "$log_file"
+    echo "Command logged to: $log_file"
+}
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --output-dir)
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo "Error: --output-dir requires a directory path"
-                exit 1
-            fi
-            OUTPUT_DIR="$2"
-            echo "Using custom output directory: $OUTPUT_DIR"
-            shift 2
-            ;;
-        --move-prob)
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo "Error: --move-prob requires a value (default, uneven-sin)"
-                exit 1
-            fi
-            MOVE_PROB="$2"
-            echo "Using movement probability type: $MOVE_PROB"
-            shift 2
-            ;;
-        --start-config)
-            USE_START_CONFIG=true
-            echo "Creating start configuration"
-            shift
-            ;;
-        --save-interval)
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo "Error: --save-interval requires a number (e.g., 100)"
-                exit 1
-            fi
-            SAVE_INTERVAL="$2"
-            echo "Saving every $SAVE_INTERVAL steps"
-            shift 2
-            ;;
-        --track-movement)
-            TRACK_MOVEMENT=1
-            echo "Movement tracking enabled"
-            shift
-            ;;
-        --create-density-and-flux)
-            CALCULATE_DENSITY_AND_FLUX=1
-            if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                echo "Error: --calculate-density-and-flux requires a start step number"
-                exit 1
-            fi
-            START_STEP_FOR_CALC="$2"
-            echo "Density and flux calculation enabled with start step $START_STEP_FOR_CALC"
-            shift 2
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N] [--track-movement]"
-            echo "  --output-dir DIR: Use custom output directory instead of 'runs'"
-            echo "  --move-prob TYPE: Specify movement probability type (default, uneven-sin, director-based-sin)"
-            echo "  --start-config: Create start configuration"
-            echo "  --save-interval N: Save every N steps for time evolution analysis"
-            echo "  --track-movement: Enable movement tracking at save intervals"
-            echo "  --create-density-and-flux: Enable density and flux calculation"
-            echo "Note: Gamma and G parameters are set in the script's parameter section"
-        
-            exit 1
-            ;;
-    esac
-done
+parse_arguments "$@"
 
 # Modify the parameter ranges below as needed
 
@@ -105,8 +195,11 @@ fi
 if [ "$TRACK_MOVEMENT" = "1" ]; then
     FLAGS="${FLAGS}_track"
 fi
-if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
-    FLAGS="${FLAGS}_calc${START_STEP_FOR_CALC}"
+if [ "$TRACK_FLUX" = "1" ]; then
+    FLAGS="${FLAGS}_flux"
+fi
+if [ "$TRACK_DENSITY" = "1" ]; then
+    FLAGS="${FLAGS}_density"
 fi
 
 # Apply flags to directory name (always include timestamp, add flags if any)
@@ -117,6 +210,14 @@ if [ ! -d "$RUNS_DIR" ]; then
     mkdir "$RUNS_DIR"
     echo "Created '$RUNS_DIR' directory for simulation outputs"
 fi
+
+# Create master log file for the entire run
+MASTER_LOG="$RUNS_DIR/run_summary.log"
+echo "# Parameter sweep run started on $(date)" > "$MASTER_LOG"
+echo "# Working directory: $(pwd)" >> "$MASTER_LOG"
+echo "# Git commit: $(git rev-parse HEAD 2>/dev/null || echo 'not available')" >> "$MASTER_LOG"
+echo "# Command line: $0 $@" >> "$MASTER_LOG"
+echo "" >> "$MASTER_LOG"
 
 # Compile the program
 echo "Compiling lattice2D-Lea-4-potential..."
@@ -152,21 +253,27 @@ for density in "${densities[@]}"; do
         start_name="$RUNS_DIR/START_d${density}_t${start_tumble_rate}_time${total_time}"
         echo "[Creating start condition] Running: density=$density, tumble_rate=$start_tumble_rate, run_name=$start_name"
         
-        # Build command for start configuration using new named parameter format
-        start_cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $start_tumble_rate --total-time $total_time --run-name $start_name --potential $MOVE_PROB"
-        
-        # Add potential-specific parameters for start configuration
-        if [ "$MOVE_PROB" = "uneven-sin" ]; then
-            start_cmd="$start_cmd --gamma $gamma"
-        elif [ "$MOVE_PROB" = "director-based-sin" ]; then
-            start_cmd="$start_cmd --gamma $gamma --g $g"
+        # Calculate save interval for start configuration
+        start_save_interval="$SAVE_INTERVAL"
+        if [ "$SAVE_INTERVAL" = "auto" ]; then
+            start_save_interval=$(calculate_save_interval "$start_tumble_rate")
         fi
         
-        $start_cmd 
+        # Build command for start configuration
+        start_cmd=$(build_simulation_command "$density" "$start_tumble_rate" "$total_time" "$start_name" "none" "$start_save_interval")
+        
+        # Log the start command
+        log_command "$start_cmd" "$start_name"
+        echo "START: $start_cmd" >> "$MASTER_LOG"
+        
+        eval "$start_cmd"
         
         if [ $? -ne 0 ]; then
             echo "Error: Failed to create start configuration for density $density"
+            echo "FAILED START: $start_cmd" >> "$MASTER_LOG"
             continue
+        else
+            echo "SUCCESS START: $start_cmd" >> "$MASTER_LOG"
         fi
     fi
         
@@ -178,7 +285,7 @@ for density in "${densities[@]}"; do
         
         echo "[$current_run/$total_runs] Running: density=$density, tumble_rate=$tumble_rate, run_name=$run_name"
         
-        # Run the simulation
+        # Determine initial file
         initial_file=none
         if [ "$USE_START_CONFIG" = true ]; then
             highest_file=$(ls "${start_name}"/Occupancy_*.dat 2>/dev/null | grep -v "Occupancy_-1.dat" | sort -V | tail -1)
@@ -190,63 +297,31 @@ for density in "${densities[@]}"; do
             fi
         fi
         
-        # Run the simulation - build command using new named parameter format
-        cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $tumble_rate --total-time $total_time --run-name $run_name"
-        
-        # Add initial file if not "none"
-        if [ "$initial_file" != "none" ]; then
-            cmd="$cmd --initial-file $initial_file"
+        # Calculate save interval for this tumble rate
+        current_save_interval="$SAVE_INTERVAL"
+        if [ "$SAVE_INTERVAL" = "auto" ]; then
+            current_save_interval=$(calculate_save_interval "$tumble_rate")
+            echo "Auto-calculated save interval: $current_save_interval (from tumble rate $tumble_rate)"
         fi
         
-        # Add potential type
-        cmd="$cmd --potential $MOVE_PROB"
+        # Build the simulation command
+        cmd=$(build_simulation_command "$density" "$tumble_rate" "$total_time" "$run_name" "$initial_file" "$current_save_interval")
         
-        # Add save interval
-        cmd="$cmd --save-interval $SAVE_INTERVAL"
+        # Log the command for reproducibility
+        log_command "$cmd" "$run_name"
         
-        # Add movement tracking
-        if [ "$TRACK_MOVEMENT" = "1" ]; then
-            cmd="$cmd --track-movement"
-        fi
+        # Log to master log
+        echo "[$current_run/$total_runs] $cmd" >> "$MASTER_LOG"
         
-        # Add density and flux calculation flags
-        if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
-            cmd="$cmd --track-density --track-flux"
-            
-            # Calculate the save interval for this tumble rate (if not explicitly set)
-            current_save_interval="$SAVE_INTERVAL"
-            if [ "$SAVE_INTERVAL" = "0" ]; then
-                # Default: use 1/tumbling_rate
-                current_save_interval=$(echo "scale=0; 1 / $tumble_rate" | bc)
-            fi
-            
-            # Adjust start step to align with save intervals if needed
-            adjusted_start_step="$START_STEP_FOR_CALC"
-            if [ "$current_save_interval" -gt 0 ]; then
-                remainder=$(($START_STEP_FOR_CALC % $current_save_interval))
-                if [ "$remainder" -ne 0 ]; then
-                    adjusted_start_step=$(($START_STEP_FOR_CALC + $current_save_interval - $remainder))
-                    echo "Adjusting start step from $START_STEP_FOR_CALC to $adjusted_start_step to align with save interval $current_save_interval"
-                fi
-            fi
-            
-            cmd="$cmd --start-calc-step $adjusted_start_step"
-        fi
-        
-        # Add potential-specific parameters
-        if [ "$MOVE_PROB" = "uneven-sin" ]; then
-            cmd="$cmd --gamma $gamma"
-        elif [ "$MOVE_PROB" = "director-based-sin" ]; then
-            cmd="$cmd --gamma $gamma --g $g"
-        fi
-        # No extra parameters needed for "default" type
-        
+        # Execute the command
         eval "$cmd"
         
         if [ $? -ne 0 ]; then
             echo "Warning: Simulation failed for $run_name"
+            echo "FAILED: [$current_run/$total_runs] $cmd" >> "$MASTER_LOG"
         else
             echo "Completed: $run_name"
+            echo "SUCCESS: [$current_run/$total_runs] $cmd" >> "$MASTER_LOG"
         fi
     done
 done
@@ -257,11 +332,33 @@ echo "  - Movement probability type: $MOVE_PROB"
 echo "  - Start config: $USE_START_CONFIG"
 echo "  - Save interval: $SAVE_INTERVAL"
 echo "  - Movement tracking: $TRACK_MOVEMENT"
-echo "  - calculate density and flux: $CALCULATE_DENSITY_AND_FLUX from step $START_STEP_FOR_CALC"
+echo "  - Flux tracking: $TRACK_FLUX"
+echo "  - Density tracking: $TRACK_DENSITY"
 if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
     echo "  - Gamma parameter: $gamma"
 fi
 if [ "$MOVE_PROB" = "director-based-sin" ]; then
     echo "  - G parameter: $g"
 fi
+
+# Write final summary to master log
+echo "" >> "$MASTER_LOG"
+echo "# Parameter sweep completed on $(date)" >> "$MASTER_LOG"
+echo "# Total runs: $total_runs" >> "$MASTER_LOG"
+echo "# Configuration:" >> "$MASTER_LOG"
+echo "#   - Movement probability type: $MOVE_PROB" >> "$MASTER_LOG"
+echo "#   - Start config: $USE_START_CONFIG" >> "$MASTER_LOG"
+echo "#   - Save interval: $SAVE_INTERVAL" >> "$MASTER_LOG"
+echo "#   - Movement tracking: $TRACK_MOVEMENT" >> "$MASTER_LOG"
+echo "#   - Flux tracking: $TRACK_FLUX" >> "$MASTER_LOG"
+echo "#   - Density tracking: $TRACK_DENSITY" >> "$MASTER_LOG"
+if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
+    echo "#   - Gamma parameter: $gamma" >> "$MASTER_LOG"
+fi
+if [ "$MOVE_PROB" = "director-based-sin" ]; then
+    echo "#   - G parameter: $g" >> "$MASTER_LOG"
+fi
+
+echo "Master log written to: $MASTER_LOG"
+echo "Individual command logs: $RUNS_DIR/*.cmd"
 echo "Run 'python visualize_simulation.py $RUNS_DIR' to create visualizations"
