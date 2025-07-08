@@ -327,19 +327,36 @@ def print_multiple_heatmaps(runs_dir, time_step=-1, save_dir=None, prefix_filter
         
         print_single_heatmap(data=data, title=title, save_path=save_path, show=show_individual)
 
-def visualize_time_evolution(directory_path, save_dir=None, show_individual=False):
+def visualize_time_evolution(runs_dir, save_dir=None, show_individual=False):
     """
     Visualize the time evolution of a single configuration directory
     
     Args:
-        directory_path: Path to directory containing time series occupancy files
+        runs_dir: Directory containing occupancy files (e.g., runs/your_run_directory/)
         save_dir: Optional directory to save images and animation
         show_individual: Whether to display each time step individually
     """
-    if not os.path.exists(directory_path):
-        print(f"Directory not found: {directory_path}")
+    os.makedirs('analysis', exist_ok=True)
+    
+    if not os.path.exists(runs_dir):
+        print(f"No '{runs_dir}' directory found!")
         return
     
+    # Extract run date
+    run_date = ""
+    if "run_" in runs_dir:
+        timestamp = os.path.basename(runs_dir)[4:]  # Remove "run_" prefix
+        try:
+            run_date = datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y%m%d_%H%M%S")
+        except:
+            run_date = timestamp.replace(":", "").replace(" ", "_")
+    
+    # Get folders with occupancy files
+    folder_results = find_files_in_directory(runs_dir)
+    folders = [full_path for _, full_path, _ in folder_results]
+    
+
+
     # Find all occupancy files and sort by time step
     occupancy_files = glob.glob(f"{directory_path}/Occupancy_*.dat")
     if not occupancy_files:
@@ -381,16 +398,12 @@ def visualize_time_evolution(directory_path, save_dir=None, show_individual=Fals
                 data = data.reshape(40, 100)
             all_data.append(data)
             
-            if show_individual or save_dir:
+            if show_individual:
                 title = f"Time Evolution: {dir_name}\nStep {time_step}"
                 if density is not None and tumble_rate is not None:
                     title = f"Density={density:.2f}, Tumble Rate={tumble_rate:.3f}\nTime Step: {time_step}"
                 
-                save_path = None
-                if save_dir:
-                    save_path = f"{save_dir}/step_{time_step:06d}.png"
-                
-                print_single_heatmap(data=data, title=title, save_path=save_path, show=show_individual)
+                print_single_heatmap(data=data, title=title, show=show_individual)
                 
         except Exception as e:
             print(f"Error processing time step {time_step}: {e}")
@@ -652,7 +665,7 @@ def create_movement_plots_by_tumble_rate(all_data, run_date=""):
         print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {filename}")
 
 def analyze_average_density(runs_dir):
-
+    pass
 
 if __name__ == "__main__":
     import sys

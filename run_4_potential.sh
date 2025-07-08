@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
             echo "Movement tracking enabled"
             shift
             ;;
-        --calculate-density-and-flux)
+        --create-density-and-flux)
             CALCULATE_DENSITY_AND_FLUX=1
             if [ -z "$2" ] || [[ "$2" == --* ]]; then
                 echo "Error: --calculate-density-and-flux requires a start step number"
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --start-config: Create start configuration"
             echo "  --save-interval N: Save every N steps for time evolution analysis"
             echo "  --track-movement: Enable movement tracking at save intervals"
-            echo "  --calculate-density-and-flux START_NUMBER: Enable density and flux calculation starting from timestep START_NUMBER"
+            echo "  --create-density-and-flux: Enable density and flux calculation"
             echo "Note: Gamma and G parameters are set in the script's parameter section"
         
             exit 1
