@@ -455,6 +455,9 @@ void Iterate(long int step){
 	int iini,jini,inew,jnew;
 	int d;
 	
+	// Initialize counter for moving particles this step
+	long int moving_particles_this_step = 0;
+	
 	// Change the order over which the particles are updated
 	shuffle(ParticleOrder,NParticles);
 		
@@ -475,6 +478,7 @@ void Iterate(long int step){
 					icurrent = inew;
 					Occupancy[icurrent][jcurrent]++;
 					PosX[n] = icurrent;
+					moving_particles_this_step++; // Increment counter for moving particles
 					if (StartStepForCalculation <= step) {
 						// Only accumulate flux if we are past the start step for calculation
 						// This avoids accumulating flux before we start tracking it
@@ -493,6 +497,7 @@ void Iterate(long int step){
 					jcurrent = jnew;
 					Occupancy[icurrent][jcurrent]++;
 					PosY[n] = jcurrent;
+					moving_particles_this_step++; // Increment counter for moving particles
 					if (StartStepForCalculation <= step) {
 						// Only accumulate flux if we are past the start step for calculation
 						// This avoids accumulating flux before we start tracking it
@@ -511,7 +516,6 @@ void Iterate(long int step){
 	}
 	
 	// Store movement count if tracking is enabled 
-	long int moving_particles_this_step = 0;
 	if (TrackMovement && MovingParticlesCount != NULL && SaveInterval > 0) {
 		// Record step 1, then every SaveInterval steps (SaveInterval, 2*SaveInterval, etc.)
 		if (step == 1 || step % SaveInterval == 0) {
@@ -609,11 +613,13 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
 	}
 	
 	// Write the particle coordinates and directors
-	sprintf(filename,"%s/Config_%ld.dat",RunName,index);
-	f=fopen(filename,"w");
-	for(n=0;n<NParticles;n++)
-		fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
-	fclose(f);
+	if (index == -1 || index == 0) {
+		sprintf(filename,"%s/Config_%ld.dat",RunName,index);
+		f=fopen(filename,"w");
+		for(n=0;n<NParticles;n++)
+			fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
+		fclose(f);
+	}
 }
 
 // Structure to hold all parameters

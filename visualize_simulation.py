@@ -6,56 +6,7 @@ from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime
 
-def create_discrete_colormap(max_val):
-    """
-    Create a discrete colormap for occupancy values from 0 to max_val
-    """
-    # Use viridis colors but make them discrete
-    viridis = plt.cm.viridis
-    colors = viridis(np.linspace(0, 1, max_val + 1))
-    return ListedColormap(colors)
-
-def extract_parameters_from_folder(folder_name):
-    """
-    Extract density, tumbling rate, gamma, and g from folder name
-    Assumes folder naming convention like: d0.5_t0.1_time10000_gamma-0.5_g1
-    """
-    # Extract basic parameters
-    density_match = re.search(r'd([0-9]*\.?[0-9]+)', folder_name)
-    tumble_match = re.search(r't([0-9]*\.?[0-9]+)', folder_name)
-    time_match = re.search(r'time([0-9]*\.?[0-9]+)', folder_name)
-    
-    # Extract gamma and g parameters (with support for negative values)
-    gamma_match = re.search(r'gamma(-?[0-9]*\.?[0-9]+)', folder_name)
-    g_match = re.search(r'g(-?[0-9]*\.?[0-9]+)', folder_name)
-    
-    if density_match and tumble_match:
-        density = float(density_match.group(1))
-        tumble_rate = float(tumble_match.group(1))
-        total_time = float(time_match.group(1)) if time_match else None
-        gamma = float(gamma_match.group(1)) if gamma_match else None
-        g = float(g_match.group(1)) if g_match else None
-        
-        return density, tumble_rate, total_time, gamma, g
-    
-    return None, None, None, None, None
-
-def calculate_metrics(occupancy_data):
-    """
-    Calculate useful metrics from occupancy data
-    """
-    metrics = {}
-    
-    # Basic statistics
-    metrics['mean_occupancy'] = np.mean(occupancy_data)
-    metrics['max_occupancy'] = np.max(occupancy_data)
-    metrics['std_occupancy'] = np.std(occupancy_data)
-    
-    # Spatial patterns
-    metrics['empty_sites'] = np.sum(occupancy_data == 0) / occupancy_data.size
-    metrics['full_sites'] = np.sum(occupancy_data >= 3) / occupancy_data.size
-    
-    return metrics
+from postprocessing.helper import create_discrete_colormap, extract_parameters_from_folder, calculate_metrics, load_occupancy_data, process_folder_for_sweep, find_files_in_directory
 
 def create_individual_heatmaps(results):
     """
@@ -229,73 +180,6 @@ def create_comparison_grid(results, run_date="", number=None):
     print(f"Comparison grid saved to '{filename}'")
     # plt.show()  # Comment out to only save, not display
 
-def load_occupancy_data(folder_path, time_step):
-    """Load occupancy data for a specific time step, with fallback logic."""
-    occupancy_files = glob.glob(f"{folder_path}/Occupancy_*.dat")
-    if not occupancy_files:
-        return None, None
-    
-    # Extract available time steps
-    available_times = []
-    for file in occupancy_files:
-        match = re.search(r'Occupancy_(-?\d+)\.dat', file)
-        if match:
-            available_times.append(int(match.group(1)))
-    
-    if not available_times:
-        return None, None
-    
-    available_times.sort()
-    
-    # Find best match
-    if time_step in available_times:
-        actual_time = time_step
-    elif time_step == -1:
-        actual_time = -1 if -1 in available_times else min(available_times)
-    else:
-        actual_time = min(available_times, key=lambda x: abs(x - time_step))
-    
-    # Load the data
-    target_file = f"{folder_path}/Occupancy_{actual_time}.dat"
-    try:
-        data = np.loadtxt(target_file)
-        # Handle both flattened (1D) and proper 2D format
-        if data.ndim == 1 and len(data) == 4000:  # 100 * 40 = 4000
-            # Reshape flattened data to 2D (40 rows, 100 cols)
-            data = data.reshape(40, 100)
-        return data, actual_time
-    except Exception as e:
-        print(f"Error loading {target_file}: {e}")
-        return None, None
-
-def process_folder_for_sweep(folder_path, time_step):
-    """Process a single folder for parameter sweep analysis."""
-    folder_name = os.path.basename(folder_path)
-    density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(folder_name)
-    
-    if density is None or tumble_rate is None:
-        return None
-    
-    # Skip if time step is impossible
-    if total_time and time_step > 0 and time_step > total_time:
-        return None
-    
-    data, actual_time = load_occupancy_data(folder_path, time_step)
-    if data is None:
-        return None
-    
-    metrics = calculate_metrics(data)
-    return {
-        'folder': folder_path,
-        'density': density,
-        'tumble_rate': tumble_rate,
-        'totaltime': total_time,
-        'gamma': gamma,
-        'g': g,
-        'occupancy_data': data,
-        **metrics
-    }
-
 def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False):
     """Create comprehensive visualizations for parameter sweep results."""
     os.makedirs('analysis', exist_ok=True)
@@ -410,35 +294,6 @@ def print_single_heatmap(file_path=None, data=None, title=None, save_path=None, 
         
     except Exception as e:
         print(f"Error creating heatmap: {e}")
-
-def find_files_in_directory(directory, pattern="Occupancy_*.dat", prefix_filter=None):
-    """
-    Helper function to find files in directories with optional filtering
-    
-    Args:
-        directory: Base directory to search
-        pattern: File pattern to match
-        prefix_filter: Optional prefix filter for subdirectories (e.g., "START_")
-    
-    Returns:
-        List of tuples: (subdirectory_name, full_path_to_subdir, matching_files)
-    """
-    if not os.path.exists(directory):
-        return []
-    
-    results = []
-    for item in os.listdir(directory):
-        # Apply prefix filter if specified
-        if prefix_filter and not item.startswith(prefix_filter):
-            continue
-        
-        subdir_path = os.path.join(directory, item)
-        if os.path.isdir(subdir_path):
-            matching_files = glob.glob(f"{subdir_path}/{pattern}")
-            if matching_files:
-                results.append((item, subdir_path, matching_files))
-    
-    return sorted(results)
 
 def print_multiple_heatmaps(runs_dir, time_step=-1, save_dir=None, prefix_filter=None, show_individual=True):
     """Print heatmaps for multiple directories."""
@@ -796,136 +651,8 @@ def create_movement_plots_by_tumble_rate(all_data, run_date=""):
         plt.close()
         print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {filename}")
 
-def filter_results_by_parameters(results, density=None, tumble_rate=None, gamma=None, g=None):
-    """
-    Filter results by specific parameter values
-    
-    Args:
-        results: List of result dictionaries
-        density: Target density value (e.g., 0.01, 0.5) or None for any
-        tumble_rate: Target tumble rate (e.g., 0.001, 0.01) or None for any
-        gamma: Target gamma value or None for any
-        g: Target G value or None for any
-    
-    Returns:
-        Filtered list of results
-    """
-    filtered = []
-    
-    for result in results:
-        # Check density
-        if density is not None and abs(result['density'] - density) > 1e-6:
-            continue
-            
-        # Check tumble rate
-        if tumble_rate is not None and abs(result['tumble_rate'] - tumble_rate) > 1e-6:
-            continue
-            
-        # Check gamma
-        if gamma is not None and result['gamma'] is not None and abs(result['gamma'] - gamma) > 1e-6:
-            continue
-            
-        # Check g
-        if g is not None and result['g'] is not None and abs(result['g'] - g) > 1e-6:
-            continue
-        
-        filtered.append(result)
-    
-    return filtered
+def analyze_average_density(runs_dir):
 
-def explore_results(results):
-    """
-    Interactive function to explore and filter results
-    """
-    print(f"\nFound {len(results)} total results")
-    
-    # Show available parameter values
-    densities = sorted(list(set(r['density'] for r in results)))
-    tumble_rates = sorted(list(set(r['tumble_rate'] for r in results)))
-    gammas = sorted(list(set(r['gamma'] for r in results if r['gamma'] is not None)))
-    gs = sorted(list(set(r['g'] for r in results if r['g'] is not None)))
-    
-    print(f"Available densities: {densities}")
-    print(f"Available tumble rates: {tumble_rates}")
-    if gammas:
-        print(f"Available gamma values: {gammas}")
-    if gs:
-        print(f"Available G values: {gs}")
-    
-    # Interactive filtering
-    while True:
-        print("\nFiltering options:")
-        print("1. Filter by density")
-        print("2. Filter by tumble rate")
-        print("3. Filter by gamma")
-        print("4. Filter by G")
-        print("5. Show current results")
-        print("6. Reset filters")
-        print("7. Exit")
-        
-        choice = input("Enter choice (1-7): ").strip()
-        
-        if choice == '1':
-            try:
-                target_density = float(input(f"Enter density value {densities}: "))
-                filtered = filter_results_by_parameters(results, density=target_density)
-                print(f"Found {len(filtered)} results with density = {target_density}")
-                for r in filtered:
-                    print(f"  Folder: {os.path.basename(r['folder'])}")
-            except ValueError:
-                print("Invalid density value")
-                
-        elif choice == '2':
-            try:
-                target_tumble = float(input(f"Enter tumble rate {tumble_rates}: "))
-                filtered = filter_results_by_parameters(results, tumble_rate=target_tumble)
-                print(f"Found {len(filtered)} results with tumble rate = {target_tumble}")
-                for r in filtered:
-                    print(f"  Folder: {os.path.basename(r['folder'])}")
-            except ValueError:
-                print("Invalid tumble rate value")
-                
-        elif choice == '3':
-            if not gammas:
-                print("No gamma values found in results")
-                continue
-            try:
-                target_gamma = float(input(f"Enter gamma value {gammas}: "))
-                filtered = filter_results_by_parameters(results, gamma=target_gamma)
-                print(f"Found {len(filtered)} results with gamma = {target_gamma}")
-                for r in filtered:
-                    print(f"  Folder: {os.path.basename(r['folder'])}")
-            except ValueError:
-                print("Invalid gamma value")
-                
-        elif choice == '4':
-            if not gs:
-                print("No G values found in results")
-                continue
-            try:
-                target_g = float(input(f"Enter G value {gs}: "))
-                filtered = filter_results_by_parameters(results, g=target_g)
-                print(f"Found {len(filtered)} results with G = {target_g}")
-                for r in filtered:
-                    print(f"  Folder: {os.path.basename(r['folder'])}")
-            except ValueError:
-                print("Invalid G value")
-                
-        elif choice == '5':
-            print(f"\nCurrent results ({len(results)} total):")
-            for i, r in enumerate(results):
-                print(f"  {i+1}. {os.path.basename(r['folder'])} - "
-                      f"ρ={r['density']:.3f}, α={r['tumble_rate']:.3f}")
-                      
-        elif choice == '6':
-            # Reset to original results - you'd need to reload
-            print("Filters reset (reload results to see all)")
-            
-        elif choice == '7':
-            break
-            
-        else:
-            print("Invalid choice")
 
 if __name__ == "__main__":
     import sys
@@ -963,14 +690,15 @@ if __name__ == "__main__":
     print("5. View single heatmap from file path")
     print("6. View time evolution of single configuration")
     print("7. Analyze movement statistics")
+    print("8. Analyze average density and average flux for all runs")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-7): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6', '7']:
+            mode_choice = input("\nEnter your choice (1-8): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
                 break
             else:
-                print("Please enter 1, 2, 3, 4, 5, 6, or 7.")
+                print("Please enter 1, 2, 3, 4, 5, 6, 7 or 8.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -1062,3 +790,9 @@ if __name__ == "__main__":
         # Analyze movement statistics
         print("Analyzing movement statistics...")
         print_moving_particles(runs_dir)
+    
+    elif mode_choice == '8':
+        # Analyze average density and flux
+        print("Analyzing average density and flux...")
+        analyze_average_density_flux(runs_dir)
+        print("Average density and flux analysis complete!")

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Parameter sweep script for lattice simulation
-# Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N]
+# Usage: ./run_4_potential.sh [--output-dir DIR] [--move-prob TYPE] [--start-config] [--save-interval N] 
 
 # Default feature flags
 OUTPUT_DIR=""
@@ -53,7 +53,11 @@ while [[ $# -gt 0 ]]; do
             ;;
         --calculate-density-and-flux)
             CALCULATE_DENSITY_AND_FLUX=1
-            START_STEP_FOR_CALC = "$2"
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo "Error: --calculate-density-and-flux requires a start step number"
+                exit 1
+            fi
+            START_STEP_FOR_CALC="$2"
             echo "Density and flux calculation enabled with start step $START_STEP_FOR_CALC"
             shift 2
             ;;
@@ -96,16 +100,13 @@ if [ "$MOVE_PROB" != "default" ]; then
     FLAGS="${FLAGS}_${MOVE_PROB}"
 fi
 if [ "$USE_START_CONFIG" = true ]; then
-    FLAGS="${FLAGS}_start-config"
+    FLAGS="${FLAGS}_start"
 fi
 if [ "$TRACK_MOVEMENT" = "1" ]; then
-    FLAGS="${FLAGS}_track-movement"
-fi
-if [ -n "$OUTPUT_DIR" ]; then
-    FLAGS="${FLAGS}_custom-dir"
+    FLAGS="${FLAGS}_track"
 fi
 if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
-    FLAGS="${FLAGS}_calc_density_flux_from_${START_STEP_FOR_CALC}"
+    FLAGS="${FLAGS}_calc${START_STEP_FOR_CALC}"
 fi
 
 # Apply flags to directory name (always include timestamp, add flags if any)
@@ -131,10 +132,8 @@ echo "Starting parameter sweep..."
 
 # ------------ PARAMETER SETTINGS ------------
 # Parameter ranges - modify these as needed
-#densities=(0.7)
-densities=(0.5 0.6 0.7)  # Added spacing between values
+densities=(0.5 0.6 0.7)
 tumble_rates=(0.001 0.005 0.01 0.05 0.1)
-#tumble_rates=(0.001 0.005)
 total_time=10000
 start_tumble_rate=0.005
 
@@ -213,6 +212,25 @@ for density in "${densities[@]}"; do
         # Add density and flux calculation flags
         if [ "$CALCULATE_DENSITY_AND_FLUX" = "1" ]; then
             cmd="$cmd --track-density --track-flux"
+            
+            # Calculate the save interval for this tumble rate (if not explicitly set)
+            current_save_interval="$SAVE_INTERVAL"
+            if [ "$SAVE_INTERVAL" = "0" ]; then
+                # Default: use 1/tumbling_rate
+                current_save_interval=$(echo "scale=0; 1 / $tumble_rate" | bc)
+            fi
+            
+            # Adjust start step to align with save intervals if needed
+            adjusted_start_step="$START_STEP_FOR_CALC"
+            if [ "$current_save_interval" -gt 0 ]; then
+                remainder=$(($START_STEP_FOR_CALC % $current_save_interval))
+                if [ "$remainder" -ne 0 ]; then
+                    adjusted_start_step=$(($START_STEP_FOR_CALC + $current_save_interval - $remainder))
+                    echo "Adjusting start step from $START_STEP_FOR_CALC to $adjusted_start_step to align with save interval $current_save_interval"
+                fi
+            fi
+            
+            cmd="$cmd --start-calc-step $adjusted_start_step"
         fi
         
         # Add potential-specific parameters
@@ -223,7 +241,7 @@ for density in "${densities[@]}"; do
         fi
         # No extra parameters needed for "default" type
         
-        $cmd
+        eval "$cmd"
         
         if [ $? -ne 0 ]; then
             echo "Warning: Simulation failed for $run_name"
