@@ -25,8 +25,9 @@ int UnitY[4] = {0,1,0,-1};
 
 // Global dynamical arrays
 char Occupancy[Lx][Ly]; // Occupancy of each site
-float XMovingParticles[Lx][Ly]; // Flux of moving particles at each site
-float YMovingParticles[Lx][Ly]; // Flux of moving particles at each site
+float XAccumulatedFlux[Lx][Ly]; // Flux of moving particles at each site
+float YAccumulatedFlux[Lx][Ly]; // Flux of moving particles at each site
+float AccumulatedDensity[Lx][Ly]; // Accumulated density at each site
 int PosX[MaxNPart],PosY[MaxNPart]; // Position of each particle
 int DirectorX[MaxNPart],DirectorY[MaxNPart]; // Cartesian componenets of the director for each particle
 long int ParticleOrder[MaxNPart]; // Order in which particles are updated
@@ -388,8 +389,9 @@ void InitialCondition(void){
 		for(i = 0; i < Lx; i++)
 			for(j = 0; j < Ly; j++)
 				Occupancy[i][j] = 0;	
-				XMovingParticles[i][j] = 0; // Initialize flux matrix
-				YMovingParticles[i][j] = 0; // Initialize flux matrix
+				XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
+				YAccumulatedFlux[i][j] = 0; // Initialize flux matrix
+				AccumulatedDensity[i][j] = 0; // Initialize density matrix
 	
 				
 		// Load occupancy from file
@@ -411,8 +413,9 @@ void InitialCondition(void){
 		for(i=0;i<Lx;i++)
 			for(j=0;j<Ly;j++)
 				Occupancy[i][j]=0;
-				XMovingParticles[i][j]=0; // Initialize flux matrix
-				YMovingParticles[i][j]=0; // Initialize flux matrix
+				XAccumulatedFlux[i][j]=0; // Initialize flux matrix
+				YAccumulatedFlux[i][j]=0; // Initialize flux matrix
+				AccumulatedDensity[i][j]=0; // Initialize density matrix
 			
 	#if (WALL==1)
 		// If there is a wall, put these sites as already fully occupied. We use nmax+1 to distinguish to a dynamical site
@@ -472,11 +475,14 @@ void Iterate(long int step){
 					icurrent = inew;
 					Occupancy[icurrent][jcurrent]++;
 					PosX[n] = icurrent;
-					XMovingParticles[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
+					if (StartStepForCalculation <= step) {
+						// Only accumulate flux if we are past the start step for calculation
+						// This avoids accumulating flux before we start tracking it
+						XAccumulatedFlux[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
+					}
 				}
 			}
 		}
-		
 		// Try Y movement second (independent of X movement result)
 		if (DirectorY[n] != 0) {
 			int jnew = (jcurrent + DirectorY[n] + Ly) % Ly;
@@ -487,11 +493,14 @@ void Iterate(long int step){
 					jcurrent = jnew;
 					Occupancy[icurrent][jcurrent]++;
 					PosY[n] = jcurrent;
-					YMovingParticles[icurrent][jcurrent] += (DirectorY[n] > 0) ? 1 : -1;
+					if (StartStepForCalculation <= step) {
+						// Only accumulate flux if we are past the start step for calculation
+						// This avoids accumulating flux before we start tracking it
+						YAccumulatedFlux[icurrent][jcurrent] += (DirectorY[n] > 0) ? 1 : -1;
+					}
 				}
 			}
-		}
-			
+		}	
 		// Do tumble with probability TumbRate
 		if(drand48()<TumbRate)
 		{
@@ -516,6 +525,16 @@ void Iterate(long int step){
 			if (track_index >= 0 && track_index < MovingParticlesSize) {
 				MovingParticlesCount[track_index] = moving_particles_this_step;
 				MovingParticlesSteps[track_index] = step;
+			}
+		}
+	}
+	
+	// Track density snapshots at save intervals (if past start step and save interval is defined)
+	if (StartStepForCalculation <= step && SaveInterval > 0 && step % SaveInterval == 0) {
+		// Add current occupancy to accumulated density
+		for (int i = 0; i < Lx; i++) {
+			for (int j = 0; j < Ly; j++) {
+				AccumulatedDensity[i][j] += (float)Occupancy[i][j];
 			}
 		}
 	}
@@ -545,42 +564,48 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
 		}
 		fclose(f);
 	}
-	else {
-		return;
-	}
 
 	// Write the density
 	if (track_density) {
-		//printf(filename,"%s/Density_%ld.dat",RunName,index);
-		//f=fopen(filename,"w");
+		sprintf(filename,"%s/AverageDensity_%ld.dat",RunName,index);
+		f=fopen(filename,"w");
+		for(j=0;j<Ly;j++)
+		{
+			for(i=0;i<Lx;i++) {
+				// Calculate average density: accumulated density divided by number of snapshots
+				long int num_snapshots = (index > 0) ? (index / SaveInterval) : 0;
+				double avg_density = (num_snapshots > 0) ? (AccumulatedDensity[i][j] / num_snapshots) : 0.0;
+				fprintf(f,"%.3f ",avg_density);
+			}
+			fprintf(f,"\n");
+		}
+		fclose(f);
 	}
 
 
 	// Write MovingParticles
 	if (track_flux) {
 		// Write the X movement flux matrix
-		sprintf(filename,"%s/XMovingParticles_%ld.dat",RunName,index);
+		sprintf(filename,"%s/XAverageFlux_%ld.dat",RunName,index);
 		f=fopen(filename,"w");
 		for(j=0;j<Ly;j++)
 		{
 			for(i=0;i<Lx;i++)
-				fprintf(f,"%.3f ",XMovingParticles[i][j] / TotalTime);
+				fprintf(f,"%.3f ",XAccumulatedFlux[i][j] / index);
 			fprintf(f,"\n");
 		}
 		fclose(f);
 		
 		// Write the Y movement flux matrix
-		sprintf(filename,"%s/YMovingParticles_%ld.dat",RunName,index);
+		sprintf(filename,"%s/YAverageFlux_%ld.dat",RunName,index);
 		f=fopen(filename,"w");
 		for(j=0;j<Ly;j++)
 		{
 			for(i=0;i<Lx;i++)
-				fprintf(f,"%.3f ",YMovingParticles[i][j] / TotalTime);
+				fprintf(f,"%.3f ",YAccumulatedFlux[i][j] / index);
 			fprintf(f,"\n");
 		}
 		fclose(f);	
-	} else {
-		return;
 	}
 	
 	// Write the particle coordinates and directors
@@ -846,6 +871,7 @@ int main(int argc, char **argv)
 		
 		// Save intermediate steps if save interval is specified
 		if(SaveInterval > 0 && step % SaveInterval == 0) {
+
 			WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
 		}
 	}
