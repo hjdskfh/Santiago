@@ -5,7 +5,7 @@ set -e
 
 # Compile the C code
 echo "Compiling simulation..."
-gcc -O3 -o lattice2D-Lea-4-potential lattice2D-Lea-4-potential.c -lm
+gcc -Wall -Wextra -pedantic -O3 -o lattice2D-Lea-4-potential lattice2D-Lea-4-potential.c -lm
 
 # Make the secondary script executable
 chmod +x /Users/leabauer/Documents/code/run_4_potential.sh

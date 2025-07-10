@@ -25,6 +25,7 @@ int UnitY[4] = {0,1,0,-1};
 
 // Global dynamical arrays
 char Occupancy[Lx][Ly]; // Occupancy of each site
+int CalculatedDensity[Lx]; // Density count at each x position
 float XAccumulatedFlux[Lx][Ly]; // Flux of moving particles at each site
 int PosX[MaxNPart],PosY[MaxNPart]; // Position of each particle
 int DirectorX[MaxNPart],DirectorY[MaxNPart]; // Cartesian componenets of the director for each particle
@@ -38,6 +39,8 @@ double Density; // Particle density, as N/(Lx*Ly). Its max value is nmax
 double TumbRate; // Tumbling rate
 long int NParticles; // Number of particles, computed from the density
 long int SaveInterval; // Interval for saving intermediate steps (0 = no intermediate saves)
+double PotentialLower;
+double PotentialUpper;
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
 
@@ -62,13 +65,23 @@ typedef struct {
 } PotentialDefinition;
 
 // Forward declarations for initialization functions
-void InitializeUnevenSinMap(void);
+void InitializeUnevenSinMap(double lower_bound, double upper_bound);
 void InitializeDirectorBasedSinMap(void);
 void InitializeMoveProbMap(void);
 
+// Forward declarations for utility functions
+double golden_section_search(double (*func)(double), double a, double b, double tol);
+double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min);
+static double uneven_sin_for_search(double x);
+
+// Wrapper functions for registry (uses default parameters)
+void InitializeUnevenSinMapDefault(void) {
+    InitializeUnevenSinMap(0.0, 1.0);  // Default bounds
+}
+
 // Registry of all available potential types - ADD NEW POTENTIALS HERE
 static const PotentialDefinition POTENTIAL_REGISTRY[] = {
-    {"uneven-sin", InitializeUnevenSinMap},
+    {"uneven-sin", InitializeUnevenSinMapDefault},
 	{"director-based-sin", InitializeDirectorBasedSinMap},
     {NULL, NULL} // Terminator
 };
@@ -98,13 +111,18 @@ double golden_section_search(double (*func)(double), double a, double b, double 
     return (a + b) / 2;
 }
 
+// Rescale x from [f_min, f_max] to [lower_bound, upper_bound]
+double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min) {
+    return lower_bound + (func(x) - f_min) / (f_max - f_min) * (upper_bound - lower_bound);
+}
+
 // Wrapper functions for golden section search (captures gamma)
 static double uneven_sin_for_search(double x) {
     return uneven_sin_function(x, Gamma);
 }
 
 // Potential initialization functions
-void InitializeUnevenSinMap(void) {
+void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
     // Find the x value where the maximum occurs
     double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
     double f_max = uneven_sin_function(x_max, Gamma);
@@ -112,7 +130,7 @@ void InitializeUnevenSinMap(void) {
     for (int x = 0; x < Lx; x++) {
         for (int y = 0; y < Ly; y++) {
             double scale_x = ((double)x / Lx) * 2 * M_PI;
-            MoveProbMap[x][y] = 1 - ((uneven_sin_function(scale_x, Gamma) / (2 * f_max)) + 0.5);
+            MoveProbMap[x][y] = rescaling_function(uneven_sin_for_search, scale_x, lower_bound, upper_bound, f_max, -f_max);
             
             // Ensure valid probability range
             if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
@@ -140,7 +158,7 @@ void InitializeDirectorBasedSinMap(void) {
 
 // Simple function to calculate movement probability based on potential type
 double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
-    (void)y; // Most potentials only depend on x
+    (void)dir_x; // Suppress unused parameter warning
     
     if (strcmp(PotentialType, "default") == 0) {
         return 1.0; // Always allow movement
@@ -387,6 +405,7 @@ void InitialCondition(void){
 			for(j = 0; j < Ly; j++)
 			{
 				Occupancy[i][j] = 0;	
+                CalculatedDensity[i] = 0; // Initialize density array
 				XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
 			}
 		
@@ -410,6 +429,7 @@ void InitialCondition(void){
 			for(j=0;j<Ly;j++)
 			{
 				Occupancy[i][j]=0;
+                CalculatedDensity[i] = 0; // Initialize density array
 				XAccumulatedFlux[i][j]=0; // Initialize flux matrix
 			}
 		
@@ -417,6 +437,8 @@ void InitialCondition(void){
 		// If there is a wall, put these sites as already fully occupied. We use nmax+1 to distinguish to a dynamical site
 		for(j=0;j<Ly;j++)
 			Occupancy[0][j]=nmax+1;
+            CalculatedDensity[0] = nmax+1; // Set density for wall
+
 	#endif
 		
 		// Loop over all the particles
@@ -431,6 +453,7 @@ void InitialCondition(void){
 			PosX[n]=i;
 			PosY[n]=j;
 			Occupancy[i][j]++;
+            CalculatedDensity[i]++; // Update density for this site
 			
 			// Asign a random director
 			d=(int)(drand48()*NDirectors);
@@ -448,15 +471,13 @@ void InitialCondition(void){
 // Perform one simulation cicle
 void Iterate(long int step){
 	long int n;
-	int iini,jini,inew,jnew;
-	int d;
 	
 	// Initialize counter for moving particles this step
 	long int moving_particles_this_step = 0;
 	
 	// Change the order over which the particles are updated
 	shuffle(ParticleOrder,NParticles);
-		
+
 	// Run over all the particles
 	// Independent X and Y movement
 	for(n=0;n<NParticles;n++)
@@ -471,12 +492,13 @@ void Iterate(long int step){
 				double prob_x = CalculateMoveProb(inew, jcurrent, DirectorX[n], 0);
 				if (drand48() < prob_x) {
 					Occupancy[icurrent][jcurrent]--;
+                    CalculatedDensity[icurrent]--; // Decrease density for old site
 					icurrent = inew;
 					Occupancy[icurrent][jcurrent]++;
+                    CalculatedDensity[icurrent]++; // Increase density for new site
 					PosX[n] = icurrent;
 					moving_particles_this_step++; // Increment counter for moving particles
 					XAccumulatedFlux[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
-					
 				}
 			}
 		}
@@ -487,10 +509,13 @@ void Iterate(long int step){
 				double prob_y = CalculateMoveProb(icurrent, jnew, 0, DirectorY[n]);
 				if (drand48() < prob_y) {
 					Occupancy[icurrent][jcurrent]--;
+                    CalculatedDensity[icurrent]--; // Decrease density for old site
 					jcurrent = jnew;
 					Occupancy[icurrent][jcurrent]++;
+                    CalculatedDensity[icurrent]++; // Increase density for new site
 					PosY[n] = jcurrent;
 					moving_particles_this_step++; // Increment counter for moving particles
+                    XAccumulatedFlux[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
 				}
 			}
 		}	
@@ -498,7 +523,7 @@ void Iterate(long int step){
 		// Do tumble with probability TumbRate
 		if(drand48()<TumbRate)
 		{
-			d=(int)(drand48()*NDirectors);
+			int d = (int)(drand48()*NDirectors);
 			DirectorX[n]=UnitX[d];
 			DirectorY[n]=UnitY[d];
 		}
@@ -533,7 +558,6 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
 	FILE *f;
 	char filename[250];
 	int i,j;
-	int d;
 	long int n;
 
 	// Write the occupancy matrix
@@ -547,6 +571,19 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
 		}
 		fclose(f);
 	}
+    
+    // Write density
+	if (track_density) {
+		// Write the X movement flux matrix (raw accumulated values)
+		sprintf(filename,"%s/Density_%ld.dat",RunName,index);
+		f=fopen(filename,"w");
+		for(i=0;i<Lx;i++)
+		{  
+            fprintf(f,"%.3f ", (double)CalculatedDensity[i] / Ly);
+		}
+		fclose(f);
+	}
+	
 
 	// Write MovingParticles
 	if (track_flux) {
@@ -589,6 +626,8 @@ typedef struct {
     bool track_occupancy;
     bool track_density;
     bool track_flux;
+    double potential_lower; // Lower bound for potential (if needed)
+    double potential_upper; // Upper bound for potential (if needed)
 } SimulationParams;
 
 // Initialize default parameters
@@ -606,6 +645,8 @@ void InitializeDefaultParams(SimulationParams *params) {
     params->track_occupancy = true;
     params->track_density = false;
     params->track_flux = false;
+    params->potential_lower = 0.0; // Default lower bound for potential 
+    params->potential_upper = 1.0; // Default upper bound for potential
 }
 
 // Show usage information
@@ -715,6 +756,20 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->g = atof(argv[++i]);
         }
+        else if (strcmp(argv[i], "--potential-lower") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: --potential-lower requires a value\n");
+                return -1;
+            }
+            params->potential_lower = atof(argv[++i]);
+        }
+        else if (strcmp(argv[i], "--potential-upper") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: --potential-upper requires a value\n");
+                return -1;
+            }
+            params->potential_upper = atof(argv[++i]);
+        }
         else if (strcmp(argv[i], "--track-occupancy") == 0) {
             params->track_occupancy = true;
         }
@@ -812,7 +867,7 @@ int main(int argc, char **argv)
 	//Loop
 	for(step=1;step<=TotalTime;step++)
 	{
-		if(step%100==0)
+		if(step%3000==0)
 			fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
 		Iterate(step);
 		

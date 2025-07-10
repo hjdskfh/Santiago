@@ -142,11 +142,16 @@ build_simulation_command() {
     fi
     
     # Add potential-specific parameters
+    
     if [ "$MOVE_PROB" = "uneven-sin" ]; then
         cmd="$cmd --gamma $gamma"
     elif [ "$MOVE_PROB" = "director-based-sin" ]; then
         cmd="$cmd --gamma $gamma --g $g"
     fi
+    if [ "$MOVE_PROB" != "default" ]; then
+        cmd="$cmd --potential-lower $potential_lower --potential-upper $potential_upper"
+    fi
+
     
     echo "$cmd"
 }
@@ -241,6 +246,8 @@ start_tumble_rate=0.005
 # Potential-specific parameters (modify as needed)
 gamma=-0.5  # For uneven-sin and director-based-sin potentials
 g=1       # For director-based-sin potential only
+potential_lower=0.0  # Lower bound for potential (if needed)
+potential_upper=1.0  # Upper bound for potential (if needed)
 
 # Counter for progress
 total_runs=$((${#densities[@]} * ${#tumble_rates[@]}))
@@ -326,6 +333,9 @@ for density in "${densities[@]}"; do
     done
 done
 
+# -------- PRINT SUMMARY AND CREATE LOGS --------
+
+# Print final summary
 echo "Parameter sweep completed in directory: $RUNS_DIR"
 echo "Configuration used:"
 echo "  - Movement probability type: $MOVE_PROB"
