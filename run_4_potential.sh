@@ -104,7 +104,7 @@ calculate_save_interval() {
     echo "$tumble_rate" | awk '{printf "%.0f", 1/$1}'
 }
 
-# Function to build simulation command
+# Function to build simulation command - automatically uses all defined parameters
 build_simulation_command() {
     local density="$1"
     local tumble_rate="$2"
@@ -113,6 +113,7 @@ build_simulation_command() {
     local initial_file="$5"
     local current_save_interval="$6"
     
+    # Build basic command with required parameters
     local cmd="./lattice2D-Lea-4-potential --density $density --tumble-rate $tumble_rate --total-time $total_time --run-name $run_name"
     
     # Add initial file if not "none"
@@ -120,38 +121,34 @@ build_simulation_command() {
         cmd="$cmd --initial-file $initial_file"
     fi
     
-    # Add potential type
-    cmd="$cmd --potential $MOVE_PROB"
-    
     # Add save interval
     cmd="$cmd --save-interval $current_save_interval"
     
-    # Add movement tracking
+    # ============ PARAMETER SECTION - ONLY PLACE TO CHANGE ============
+    # Add your parameters here using the pattern: cmd="$cmd --parameter-name $variable"
+    # The C code will automatically recognize any --parameter-name you add
+    
+    cmd="$cmd --potential $MOVE_PROB"
+    cmd="$cmd --gamma $gamma"
+    cmd="$cmd --g $g"
+    cmd="$cmd --potential-lower $potential_lower"
+    cmd="$cmd --potential-upper $potential_upper"
+    cmd="$cmd --seed $seed"
+    
+    # Add flags
     if [ "$TRACK_MOVEMENT" = "1" ]; then
         cmd="$cmd --track-movement"
     fi
-    
-    # Add flux tracking
     if [ "$TRACK_FLUX" = "1" ]; then
         cmd="$cmd --track-flux"
     fi
-    
-    # Add density tracking
     if [ "$TRACK_DENSITY" = "1" ]; then
         cmd="$cmd --track-density"
     fi
     
-    # Add potential-specific parameters
-    
-    if [ "$MOVE_PROB" = "uneven-sin" ]; then
-        cmd="$cmd --gamma $gamma"
-    elif [ "$MOVE_PROB" = "director-based-sin" ]; then
-        cmd="$cmd --gamma $gamma --g $g"
-    fi
-    if [ "$MOVE_PROB" != "default" ]; then
-        cmd="$cmd --potential-lower $potential_lower --potential-upper $potential_upper"
-    fi
-
+    # To add a new parameter, just add one line here:
+    # cmd="$cmd --new-parameter $new_variable"
+    # That's it! No other changes needed anywhere else.
     
     echo "$cmd"
 }
@@ -224,9 +221,9 @@ echo "# Git commit: $(git rev-parse HEAD 2>/dev/null || echo 'not available')" >
 echo "# Command line: $0 $@" >> "$MASTER_LOG"
 echo "" >> "$MASTER_LOG"
 
-# Compile the program
-echo "Compiling lattice2D-Lea-4-potential..."
-gcc -o lattice2D-Lea-4-potential lattice2D-Lea-4-potential.c -lm
+# Compile the program with optimization flags
+echo "Compiling lattice2D-Lea-4-potential with optimizations..."
+gcc -O3 -march=native -ffast-math -funroll-loops -o lattice2D-Lea-4-potential lattice2D-Lea-4-potential.c -lm
 
 if [ $? -ne 0 ]; then
     echo "Compilation failed!"
@@ -236,18 +233,26 @@ fi
 echo "Starting parameter sweep..."
 
 
-# ------------ PARAMETER SETTINGS ------------
+# ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
-densities=(0.5 0.6 0.7)
-tumble_rates=(0.001 0.005 0.01 0.05 0.1)
+densities=(0.5) #0.6 0.7)
+tumble_rates=(0.008) #0.01 0.05 0.1)
 total_time=10000
 start_tumble_rate=0.005
 
-# Potential-specific parameters (modify as needed)
-gamma=-0.5  # For uneven-sin and director-based-sin potentials
-g=1       # For director-based-sin potential only
-potential_lower=0.0  # Lower bound for potential (if needed)
-potential_upper=1.0  # Upper bound for potential (if needed)
+# *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
+# Any parameter you add here will automatically be passed to the C program
+# Just make sure the C program accepts the --parameter-name format
+
+gamma=-0.5              # Gamma parameter for sin potentials
+g=1                     # G parameter for director-based-sin potential
+potential_lower=0.2    # Lower bound for potential
+potential_upper=0.8     # Upper bound for potential
+seed=837437             # Random seed (example of new parameter)
+
+# To add a new parameter:
+# 1. Add: new_parameter=value    # here
+# 2. Add: cmd="$cmd --new-parameter $new_parameter"    # in build_simulation_command
 
 # Counter for progress
 total_runs=$((${#densities[@]} * ${#tumble_rates[@]}))

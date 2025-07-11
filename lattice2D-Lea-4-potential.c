@@ -35,6 +35,7 @@ long int ParticleOrder[MaxNPart]; // Order in which particles are updated
 char RunName[100]; // Name of the run for output directory
 char InitialFile[200]; // Path to initial occupancy file (optional)
 char PotentialType[50]; // Type of potential to use
+int PotentialTypeCode = 0; // Cached potential type: 0=default, 1=uneven-sin, 2=director-based-sin
 double Density; // Particle density, as N/(Lx*Ly). Its max value is nmax
 double TumbRate; // Tumbling rate
 long int NParticles; // Number of particles, computed from the density
@@ -43,7 +44,6 @@ double PotentialLower;
 double PotentialUpper;
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
-
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -61,35 +61,71 @@ int MoveProbMapInitialized = 0;
 // Structure to define a potential type
 typedef struct {
     const char* name;
-    void (*initialize_func)(void);
+    void (*initialize_func)(double, double);
 } PotentialDefinition;
 
 // Forward declarations for initialization functions
+void InitializeSinPotentialMap(const char* potential_type, double lower_bound, double upper_bound);
 void InitializeUnevenSinMap(double lower_bound, double upper_bound);
-void InitializeDirectorBasedSinMap(void);
+void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound);
 void InitializeMoveProbMap(void);
+
+// Debug functions for printing movement probability map
+void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y);
+void PrintMoveProbMapSample(void);
 
 // Forward declarations for utility functions
 double golden_section_search(double (*func)(double), double a, double b, double tol);
 double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min);
 static double uneven_sin_for_search(double x);
+static double shifted_uneven_sin_for_search(double x);
 
-// Wrapper functions for registry (uses default parameters)
-void InitializeUnevenSinMapDefault(void) {
-    InitializeUnevenSinMap(0.0, 1.0);  // Default bounds
+// Debug function to print MoveProbMap values to terminal
+void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y) {
+    if (!MoveProbMapInitialized) {
+        InitializeMoveProbMap();
+    }
+    
+    // Validate ranges
+    if (start_x < 0) start_x = 0;
+    if (end_x >= Lx) end_x = Lx - 1;
+    if (start_y < 0) start_y = 0;
+    if (end_y >= Ly) end_y = Ly - 1;
+    
+    fprintf(stderr, "\nMoveProbMap[%d-%d][%d-%d] for potential type '%s':\n", 
+            start_x, end_x, start_y, end_y, PotentialType);
+    fprintf(stderr, "    y\\x ");
+    
+    // Print column headers
+    for (int x = start_x; x <= end_x; x++) {
+        fprintf(stderr, "%8d ", x);
+    }
+    fprintf(stderr, "\n");
+    
+    // Print rows
+    for (int y = start_y; y <= end_y; y++) {
+        fprintf(stderr, "%7d ", y);
+        for (int x = start_x; x <= end_x; x++) {
+            fprintf(stderr, "%8.4f ", MoveProbMap[x][y]);
+        }
+        fprintf(stderr, "\n");
+    }
+    fprintf(stderr, "\n");
+}
+
+// Convenience function to print a sample of the map
+void PrintMoveProbMapSample(void) {
+    PrintMoveProbMap(150, 160, 0, 4);  // Print first 10x5 region
 }
 
 // Registry of all available potential types - ADD NEW POTENTIALS HERE
 static const PotentialDefinition POTENTIAL_REGISTRY[] = {
-    {"uneven-sin", InitializeUnevenSinMapDefault},
-	{"director-based-sin", InitializeDirectorBasedSinMap},
+    {"uneven-sin", InitializeUnevenSinMap},
+    {"director-based-sin", InitializeDirectorBasedSinMap},
     {NULL, NULL} // Terminator
 };
 
-// Movement probability function definitions
-double uneven_sin_function(double x, double gamma) {
-    return sin(x) + gamma * sin(2 * x);
-}
+
 
 // Golden Section Search to find maximum
 double golden_section_search(double (*func)(double), double a, double b, double tol) {
@@ -116,44 +152,57 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
     return lower_bound + (func(x) - f_min) / (f_max - f_min) * (upper_bound - lower_bound);
 }
 
+// Movement probability function definitions
+double uneven_sin_function(double x, double gamma) {
+    return sin(x) + gamma * sin(2 * x);
+}
+
 // Wrapper functions for golden section search (captures gamma)
 static double uneven_sin_for_search(double x) {
     return uneven_sin_function(x, Gamma);
 }
 
-// Potential initialization functions
-void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
-    // Find the x value where the maximum occurs
+double shifted_uneven_sin_for_search(double x) {
+    // Shifted version: G * (sin(x) + gamma * sin(2 * x)) + 0.5
+    return G * uneven_sin_function(x, Gamma) - 0.5;
+}
+
+// Unified potential initialization function
+void InitializeSinPotentialMap(const char* potential_type, double lower_bound, double upper_bound) {
+    // Find the x value where the maximum occurs for normalization
     double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
     double f_max = uneven_sin_function(x_max, Gamma);
-
+    
     for (int x = 0; x < Lx; x++) {
         for (int y = 0; y < Ly; y++) {
             double scale_x = ((double)x / Lx) * 2 * M_PI;
-            MoveProbMap[x][y] = rescaling_function(uneven_sin_for_search, scale_x, lower_bound, upper_bound, f_max, -f_max);
+            
+            if (strcmp(potential_type, "uneven-sin") == 0) {
+                // Uneven sin: rescale function output to [lower_bound, upper_bound]
+                MoveProbMap[x][y] = rescaling_function(uneven_sin_for_search, scale_x, lower_bound, upper_bound, f_max, -f_max);
+            } else if (strcmp(potential_type, "director-based-sin") == 0) {
+                // Director-based sin: original formula using G parameter
+                MoveProbMap[x][y] = 1 - (0.5 + G * (uneven_sin_function(scale_x, Gamma) / (2 * f_max)));
+            }
             
             // Ensure valid probability range
             if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
             if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
         }
     }
+    PrintMoveProbMap(150,170,0,4); // Print a sample of the map
+
+    fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", 
+           potential_type, lower_bound, upper_bound);
 }
 
-void InitializeDirectorBasedSinMap(void) {
-    // Find maximum for normalization
-	double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
-    double f_max = uneven_sin_function(x_max, Gamma);
-    
-	for (int x = 0; x < Lx; x++) {
-        for (int y = 0; y < Ly; y++) {
-            double scale_x = ((double)x / Lx) * 2 * M_PI;
-            MoveProbMap[x][y] = 1 - (0.5 + G * (uneven_sin_function(scale_x, Gamma) / (2 * f_max)));
-            
-            // Ensure valid probability range
-            if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
-            if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
-        }
-    }
+// Wrapper functions for backward compatibility and registry
+void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
+    InitializeSinPotentialMap("uneven-sin", lower_bound, upper_bound);
+}
+
+void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound) {
+    InitializeSinPotentialMap("director-based-sin", lower_bound, upper_bound); // bounds not used for this type
 }
 
 // Simple function to calculate movement probability based on potential type
@@ -191,17 +240,24 @@ void InitializeMoveProbMap(void) {
     
     fprintf(stderr, "Initializing %s potential (gamma = %.3f)...\n", PotentialType, Gamma);
     
+    // Set flag immediately to prevent recursion
+    MoveProbMapInitialized = 1;
+    
     // Look up potential type in registry
     for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
         if (strcmp(PotentialType, POTENTIAL_REGISTRY[i].name) == 0) {
-            POTENTIAL_REGISTRY[i].initialize_func();
-            MoveProbMapInitialized = 1;
+            POTENTIAL_REGISTRY[i].initialize_func(PotentialLower, PotentialUpper);
             fprintf(stderr, "Movement probability map initialized.\n");
+            
+            // Print a sample of the map for debugging (uncomment to see values)
+            // PrintMoveProbMapSample();
+            
             return;
         }
     }
     
     // If we get here, the potential type was not found
+    MoveProbMapInitialized = 0; // Reset flag since initialization failed
     fprintf(stderr, "Error: Unknown potential type '%s'\n", PotentialType);
     fprintf(stderr, "Available types: default");
     for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
@@ -213,13 +269,22 @@ void InitializeMoveProbMap(void) {
 
 // Function to validate potential type
 void SetPotentialFunction(const char* potential_type) {
-    // Special case: "default" potential
+    // Cache potential type as integer for faster comparisons
     if (strcmp(potential_type, "default") == 0) {
+        PotentialTypeCode = 0;
+        CalculateMoveProb = CalculateMovementProbability;
+        return;
+    } else if (strcmp(potential_type, "uneven-sin") == 0) {
+        PotentialTypeCode = 1;
+        CalculateMoveProb = CalculateMovementProbability;
+        return;
+    } else if (strcmp(potential_type, "director-based-sin") == 0) {
+        PotentialTypeCode = 2;
         CalculateMoveProb = CalculateMovementProbability;
         return;
     }
     
-    // Check if potential type exists in registry
+    // Check if potential type exists in registry (for extensibility)
     for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
         if (strcmp(potential_type, POTENTIAL_REGISTRY[i].name) == 0) {
             CalculateMoveProb = CalculateMovementProbability;
@@ -387,13 +452,13 @@ void ReconstructParticlesFromOccupancy(void){
 	fprintf(stderr, "Reconstructed %ld particles from occupancy matrix\n", NParticles);
 }
 
-void InitialCondition(void){
+void InitialCondition(long int seed){
 	int i,j;
 	int d;
 	long int n;
 	
 	// Random seed
-	srand48(837437);
+	srand48(seed);
 	
 	// Check if we should load from file
 	if(strlen(InitialFile) > 0)
@@ -468,7 +533,7 @@ void InitialCondition(void){
 		ParticleOrder[n]=n;
 }
 
-// Perform one simulation cicle
+// Perform one simulation cicle - OPTIMIZED VERSION
 void Iterate(long int step){
 	long int n;
 	
@@ -478,56 +543,113 @@ void Iterate(long int step){
 	// Change the order over which the particles are updated
 	shuffle(ParticleOrder,NParticles);
 
+	// Pre-generate random numbers for better performance
+	// Generate all random numbers we might need at once
+	static double *rand_buffer = NULL;
+	static long int rand_buffer_size = 0;
+	
+	// Allocate or resize random buffer if needed
+	long int needed_randoms = NParticles * 3; // max 3 randoms per particle
+	if (rand_buffer == NULL || rand_buffer_size < needed_randoms) {
+		if (rand_buffer) free(rand_buffer);
+		rand_buffer_size = needed_randoms * 2; // allocate extra for growth
+		rand_buffer = (double*)malloc(rand_buffer_size * sizeof(double));
+	}
+	
+	// Generate all random numbers at once (more efficient than individual calls)
+	for (long int i = 0; i < needed_randoms; i++) {
+		rand_buffer[i] = drand48();
+	}
+	long int rand_idx = 0;
+
 	// Run over all the particles
 	// Independent X and Y movement
 	for(n=0;n<NParticles;n++)
 	{
-		int icurrent = PosX[n];
-		int jcurrent = PosY[n];
+		long int particle_id = ParticleOrder[n];
+		int icurrent = PosX[particle_id];
+		int jcurrent = PosY[particle_id];
+		
+		// Cache director values to avoid repeated array access
+		int dir_x = DirectorX[particle_id];
+		int dir_y = DirectorY[particle_id];
 		
 		// Try X movement first
-		if (DirectorX[n] != 0) {
-			int inew = (icurrent + DirectorX[n] + Lx) % Lx;
+		if (dir_x != 0) {
+			int inew = (icurrent + dir_x + Lx) % Lx;
 			if (Occupancy[inew][jcurrent] < nmax) {
-				double prob_x = CalculateMoveProb(inew, jcurrent, DirectorX[n], 0);
-				if (drand48() < prob_x) {
+				// Inline probability calculation for better performance
+				double prob_x;
+				if (PotentialTypeCode == 0) { // default
+					prob_x = 1.0;
+				} else if (PotentialTypeCode == 2 && dir_y != 0) { // director-based-sin with y-direction
+					prob_x = 0.5; // Director pointing in ±y direction
+				} else {
+					// Use pre-calculated map
+					if (!MoveProbMapInitialized) {
+						InitializeMoveProbMap();
+					}
+					prob_x = MoveProbMap[inew][jcurrent];
+				}
+				
+				if (rand_buffer[rand_idx++] < prob_x) {
 					Occupancy[icurrent][jcurrent]--;
                     CalculatedDensity[icurrent]--; // Decrease density for old site
 					icurrent = inew;
 					Occupancy[icurrent][jcurrent]++;
                     CalculatedDensity[icurrent]++; // Increase density for new site
-					PosX[n] = icurrent;
+					PosX[particle_id] = icurrent;
 					moving_particles_this_step++; // Increment counter for moving particles
-					XAccumulatedFlux[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
+					XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
 				}
+			} else {
+				rand_idx++; // Skip the random number we would have used
 			}
 		}
+		
 		// Try Y movement second (independent of X movement result)
-		if (DirectorY[n] != 0) {
-			int jnew = (jcurrent + DirectorY[n] + Ly) % Ly;
+		if (dir_y != 0) {
+			int jnew = (jcurrent + dir_y + Ly) % Ly;
 			if (Occupancy[icurrent][jnew] < nmax) {
-				double prob_y = CalculateMoveProb(icurrent, jnew, 0, DirectorY[n]);
-				if (drand48() < prob_y) {
+				// Inline probability calculation for better performance
+				double prob_y;
+				if (PotentialTypeCode == 0) { // default
+					prob_y = 1.0;
+				} else if (PotentialTypeCode == 2 && dir_x != 0) { // director-based-sin with x-direction
+					prob_y = 0.5; // Director pointing in ±x direction  
+				} else {
+					// Use pre-calculated map
+					if (!MoveProbMapInitialized) {
+						InitializeMoveProbMap();
+					}
+					prob_y = MoveProbMap[icurrent][jnew];
+				}
+				
+				if (rand_buffer[rand_idx++] < prob_y) {
 					Occupancy[icurrent][jcurrent]--;
                     CalculatedDensity[icurrent]--; // Decrease density for old site
 					jcurrent = jnew;
 					Occupancy[icurrent][jcurrent]++;
                     CalculatedDensity[icurrent]++; // Increase density for new site
-					PosY[n] = jcurrent;
+					PosY[particle_id] = jcurrent;
 					moving_particles_this_step++; // Increment counter for moving particles
-                    XAccumulatedFlux[icurrent][jcurrent] += (DirectorX[n] > 0) ? 1 : -1;
+                    XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
 				}
+			} else {
+				rand_idx++; // Skip the random number we would have used
 			}
 		}	
 
 		// Do tumble with probability TumbRate
-		if(drand48()<TumbRate)
+		if(rand_buffer[rand_idx++] < TumbRate)
 		{
-			int d = (int)(drand48()*NDirectors);
-			DirectorX[n]=UnitX[d];
-			DirectorY[n]=UnitY[d];
+			int d = (int)(rand_buffer[rand_idx++] * NDirectors);
+			DirectorX[particle_id] = UnitX[d];
+			DirectorY[particle_id] = UnitY[d];
 		}
 	}
+	
+	// Store movement count if tracking is enabled
 	
 	// Store movement count if tracking is enabled 
 	if (TrackMovement && MovingParticlesCount != NULL && SaveInterval > 0) {
@@ -628,6 +750,7 @@ typedef struct {
     bool track_flux;
     double potential_lower; // Lower bound for potential (if needed)
     double potential_upper; // Upper bound for potential (if needed)
+    long int seed;          // Random seed 
 } SimulationParams;
 
 // Initialize default parameters
@@ -647,6 +770,7 @@ void InitializeDefaultParams(SimulationParams *params) {
     params->track_flux = false;
     params->potential_lower = 0.0; // Default lower bound for potential 
     params->potential_upper = 1.0; // Default upper bound for potential
+    params->seed = 837437; // Default random seed
 }
 
 // Show usage information
@@ -668,6 +792,7 @@ void ShowUsage(const char* program_name) {
     fprintf(stderr, "  --track-occupancy           Track occupancy matrices (default: enabled)\n");
     fprintf(stderr, "  --track-density             Track density calculations\n");
     fprintf(stderr, "  --track-flux                Track movement flux matrices\n");
+    fprintf(stderr, "  --seed VALUE                Random seed (default: 837437)\n");
     fprintf(stderr, "  --help                      Show this help message\n\n");
     
     fprintf(stderr, "Examples:\n");
@@ -779,6 +904,26 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
         else if (strcmp(argv[i], "--track-flux") == 0) {
             params->track_flux = true;
         }
+        else if (strcmp(argv[i], "--seed") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: --seed requires a value\n");
+                return -1;
+            }
+            params->seed = atol(argv[++i]);
+        }
+        // ============ ADD NEW PARAMETERS HERE ============
+        // To add a new parameter:
+        // 1. Add it to SimulationParams struct above
+        // 2. Add the parsing logic here following this pattern:
+        //    else if (strcmp(argv[i], "--new-parameter") == 0) {
+        //        if (i + 1 >= argc) {
+        //            fprintf(stderr, "Error: --new-parameter requires a value\n");
+        //            return -1;
+        //        }
+        //        params->new_parameter = atof(argv[++i]);  // or atol() for integers
+        //    }
+        // 3. Add it to the bash script parameter section
+        // That's it! The system will automatically handle the rest.
         else {
             fprintf(stderr, "Error: Unknown option '%s'\n", argv[i]);
             fprintf(stderr, "Use --help for usage information\n");
@@ -826,6 +971,11 @@ int main(int argc, char **argv)
 	TrackMovement = params.track_movement;
 	Gamma = params.gamma;
 	G = params.g;
+    PotentialLower = params.potential_lower;
+    PotentialUpper = params.potential_upper;
+	
+	// Initialize the simulation (pass seed from params)
+	InitialCondition(params.seed);
 	
 	// Set the potential function
 	SetPotentialFunction(PotentialType);
@@ -853,7 +1003,7 @@ int main(int argc, char **argv)
 	params.track_flux ? "enabled" : "disabled");
 		
 	// Initialize the simulation
-	InitialCondition();
+	InitialCondition(params.seed);
 	
 	// Initialize movement tracking
 	InitializeMovementTracking(TotalTime);

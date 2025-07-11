@@ -50,10 +50,17 @@ def create_comparison_grid(results, run_date="", number=None):
     
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
     
-    if n_rows == 1:
-        axes = axes.reshape(1, -1)
+    # Handle different return types from plt.subplots
+    if n_rows == 1 and n_cols == 1:
+        # Single subplot: axes is a single Axes object
+        axes = np.array([[axes]])
+    elif n_rows == 1:
+        # Single row: axes is a 1D array
+        axes = np.array([axes])
     elif n_cols == 1:
-        axes = axes.reshape(-1, 1)
+        # Single column: axes is a 1D array
+        axes = np.array([[ax] for ax in axes])
+    # else: axes is already a 2D array
     
     # Find global min/max for consistent color scaling - discrete integer occupancy values
     all_data = [r['occupancy_data'] for r in results]
@@ -666,6 +673,8 @@ def create_movement_plots_by_tumble_rate(all_data, run_date=""):
 
 def analyze_average_density(runs_dir):
     pass
+
+
 
 if __name__ == "__main__":
     import sys
