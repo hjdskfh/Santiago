@@ -65,7 +65,7 @@ typedef struct {
 } PotentialDefinition;
 
 // Forward declarations for initialization functions
-void InitializeSinPotentialMap(const char* potential_type, double lower_bound, double upper_bound);
+void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound);
 void InitializeUnevenSinMap(double lower_bound, double upper_bound);
 void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound);
 void InitializeMoveProbMap(void);
@@ -164,27 +164,22 @@ static double uneven_sin_for_search(double x) {
 
 double shifted_uneven_sin_for_search(double x) {
     // Shifted version: G * (sin(x) + gamma * sin(2 * x)) + 0.5
-    return G * uneven_sin_function(x, Gamma) - 0.5;
+    return G * uneven_sin_function(x, Gamma) + 0.5;
 }
 
 // Unified potential initialization function
-void InitializeSinPotentialMap(const char* potential_type, double lower_bound, double upper_bound) {
+void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound) {
     // Find the x value where the maximum occurs for normalization
-    double x_max = golden_section_search(uneven_sin_for_search, 0.0, M_PI, 1e-6);
-    double f_max = uneven_sin_function(x_max, Gamma);
+    double x_max = golden_section_search(func, 0.0, M_PI, 1e-6);
+    double f_max = func(x_max);
     
     for (int x = 0; x < Lx; x++) {
         for (int y = 0; y < Ly; y++) {
             double scale_x = ((double)x / Lx) * 2 * M_PI;
             
-            if (strcmp(potential_type, "uneven-sin") == 0) {
-                // Uneven sin: rescale function output to [lower_bound, upper_bound]
-                MoveProbMap[x][y] = rescaling_function(uneven_sin_for_search, scale_x, lower_bound, upper_bound, f_max, -f_max);
-            } else if (strcmp(potential_type, "director-based-sin") == 0) {
-                // Director-based sin: original formula using G parameter
-                MoveProbMap[x][y] = 1 - (0.5 + G * (uneven_sin_function(scale_x, Gamma) / (2 * f_max)));
-            }
-            
+            //rescale function output to [lower_bound, upper_bound]
+            MoveProbMap[x][y] = rescaling_function(func, scale_x, lower_bound, upper_bound, f_max, -f_max);
+          
             // Ensure valid probability range
             if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
             if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
@@ -193,16 +188,16 @@ void InitializeSinPotentialMap(const char* potential_type, double lower_bound, d
     PrintMoveProbMap(150,170,0,4); // Print a sample of the map
 
     fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", 
-           potential_type, lower_bound, upper_bound);
+           PotentialType, lower_bound, upper_bound);
 }
 
 // Wrapper functions for backward compatibility and registry
 void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
-    InitializeSinPotentialMap("uneven-sin", lower_bound, upper_bound);
+    InitializeSinPotentialMap(uneven_sin_for_search, lower_bound, upper_bound);
 }
 
 void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound) {
-    InitializeSinPotentialMap("director-based-sin", lower_bound, upper_bound); // bounds not used for this type
+    InitializeSinPotentialMap(shifted_uneven_sin_for_search, lower_bound, upper_bound); // bounds not used for this type
 }
 
 // Simple function to calculate movement probability based on potential type

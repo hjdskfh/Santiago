@@ -671,10 +671,762 @@ def create_movement_plots_by_tumble_rate(all_data, run_date=""):
         plt.close()
         print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {filename}")
 
-def analyze_average_density(runs_dir):
-    pass
+def visualize_density_stack(runs_dir, save_dir=None, show_individual=True):
+    """
+    Visualize density files by stacking them with the first line at the bottom
+    to create a proper diagram representation.
+    
+    Args:
+        runs_dir: Directory containing density files
+        save_dir: Optional directory to save images
+        show_individual: Whether to display each density diagram individually
+    """
+    os.makedirs('analysis', exist_ok=True)
+    
+    if not os.path.exists(runs_dir):
+        print(f"No '{runs_dir}' directory found!")
+        return
+    
+    # Find density files (try both uppercase and lowercase)
+    density_files = glob.glob(f"{runs_dir}/**/Density_*.dat", recursive=True)
+    if not density_files:
+        density_files = glob.glob(f"{runs_dir}/**/density_*.dat", recursive=True)
+    if not density_files:
+        print(f"No density files found in {runs_dir}")
+        return
+    
+    print(f"Found {len(density_files)} density files")
+    
+    for density_file in density_files:
+        try:
+            # Load density data
+            raw_data = np.loadtxt(density_file)
+            
+            # Check if data is 1D or 2D and handle accordingly
+            if raw_data.ndim == 1:
+                # 1D density profile - plot as line
+                x = np.arange(len(raw_data))
+                
+                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+                ax.plot(x, raw_data, 'b-', linewidth=2)
+                ax.set_xlabel('Position', fontsize=12)
+                ax.set_ylabel('Density Value', fontsize=12)
+                ax.grid(True, alpha=0.3)
+                
+                # Extract info from filename
+                filename = os.path.basename(density_file)
+                dir_name = os.path.basename(os.path.dirname(density_file))
+                
+                # Try to extract parameters from directory or filename
+                density_param, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+                
+                # Create title
+                title = f"Density Profile: {filename}\n"
+                if density_param is not None and tumble_rate is not None:
+                    title += f"Density={density_param:.3f}, Tumble Rate={tumble_rate:.3f}"
+                else:
+                    title += f"Directory: {dir_name}"
+                
+                ax.set_title(title, fontsize=14)
+                
+                # Add statistics as text
+                mean_val = np.mean(raw_data)
+                std_val = np.std(raw_data)
+                min_val = np.min(raw_data)
+                max_val = np.max(raw_data)
+                ax.text(0.02, 0.98, f'μ={mean_val:.3f}\nσ={std_val:.3f}\nmin={min_val:.3f}\nmax={max_val:.3f}', 
+                       transform=ax.transAxes, verticalalignment='top', fontsize=10,
+                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            else:
+                # 2D density heatmap - original behavior
+                data = raw_data
+                if len(raw_data) == 4000:
+                    data = raw_data.reshape(40, 100)
+                
+                # Stack the data with first line at bottom (flip vertically)
+                stacked_data = np.flipud(data)
+                
+                # Create the visualization
+                fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+                
+                # Use a color map suitable for density data
+                im = ax.imshow(stacked_data, cmap='viridis', origin='lower', aspect='equal')
+                
+                # Extract info from filename
+                filename = os.path.basename(density_file)
+                dir_name = os.path.basename(os.path.dirname(density_file))
+                
+                # Try to extract parameters from directory or filename
+                density_param, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+                
+                # Create title
+                title = f"Density Distribution: {filename}\n"
+                if density_param is not None and tumble_rate is not None:
+                    title += f"Density={density_param:.3f}, Tumble Rate={tumble_rate:.3f}"
+                else:
+                    title += f"Directory: {dir_name}"
+                
+                ax.set_title(title, fontsize=14)
+                ax.set_xlabel('X Position', fontsize=12)
+                ax.set_ylabel('Y Position (stacked, first line at bottom)', fontsize=12)
+                
+                # Add colorbar
+                cbar = plt.colorbar(im, ax=ax, label='Density Value')
+                
+                # Add grid for better readability
+                ax.grid(True, alpha=0.3, linestyle='--')
+            
+            # Save if requested
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+                save_filename = filename.replace('.dat', '_stacked.png')
+                save_path = os.path.join(save_dir, save_filename)
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"Density stack saved to: {save_path}")
+            
+            if show_individual:
+                plt.show()
+            else:
+                plt.close()
+                
+        except Exception as e:
+            print(f"Error processing {density_file}: {e}")
+            continue
+    
+    print(f"Density stack visualization complete! Processed {len(density_files)} files.")
+
+def visualize_density_time_evolution(runs_dir, save_dir=None, show_individual=False):
+    """
+    Visualize the time evolution of density files for each parameter combination.
+    
+    Args:
+        runs_dir: Directory containing density files
+        save_dir: Optional directory to save images
+        show_individual: Whether to display each time step individually
+    """
+    os.makedirs('analysis', exist_ok=True)
+    
+    if not os.path.exists(runs_dir):
+        print(f"No '{runs_dir}' directory found!")
+        return
+    
+    # Find all density files
+    density_files = glob.glob(f"{runs_dir}/**/Density_*.dat", recursive=True)
+    if not density_files:
+        density_files = glob.glob(f"{runs_dir}/**/density_*.dat", recursive=True)
+    if not density_files:
+        print(f"No density files found in {runs_dir}")
+        return
+    
+    print(f"Found {len(density_files)} density files")
+    
+    # Group files by parameter combination (directory)
+    param_groups = {}
+    for density_file in density_files:
+        dir_path = os.path.dirname(density_file)
+        dir_name = os.path.basename(dir_path)
+        
+        if dir_name not in param_groups:
+            param_groups[dir_name] = []
+        
+        # Extract time step from filename
+        filename = os.path.basename(density_file)
+        match = re.search(r'Density_(\d+)\.dat', filename)
+        if match:
+            time_step = int(match.group(1))
+            param_groups[dir_name].append((time_step, density_file))
+    
+    # Process each parameter combination
+    for dir_name, files in param_groups.items():
+        if len(files) < 2:
+            print(f"Skipping {dir_name}: only {len(files)} density file(s) found")
+            continue
+        
+        # Sort by time step
+        files.sort(key=lambda x: x[0])
+        
+        print(f"Processing {dir_name}: {len(files)} time steps from {files[0][0]} to {files[-1][0]}")
+        
+        # Extract parameters
+        density_param, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+        
+        # Load all data
+        all_data = []
+        time_steps = []
+        for time_step, file_path in files:
+            try:
+                raw_data = np.loadtxt(file_path)
+                
+                # Reshape if needed
+                if raw_data.ndim == 1 and len(raw_data) == 4000:
+                    data = raw_data.reshape(40, 100)
+                else:
+                    data = raw_data
+                
+                # Stack with first line at bottom
+                stacked_data = np.flipud(data)
+                all_data.append(stacked_data)
+                time_steps.append(time_step)
+                
+                # Show individual frames if requested
+                if show_individual:
+                    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+                    im = ax.imshow(stacked_data, cmap='viridis', origin='lower', aspect='equal')
+                    
+                    title = f"Density Evolution: {dir_name}\nTime Step: {time_step}"
+                    if density_param is not None and tumble_rate is not None:
+                        title = f"Density={density_param:.3f}, Tumble Rate={tumble_rate:.3f}\nTime Step: {time_step}"
+                    
+                    ax.set_title(title, fontsize=14)
+                    ax.set_xlabel('X Position')
+                    ax.set_ylabel('Y Position (stacked)')
+                    plt.colorbar(im, ax=ax, label='Density Value')
+                    
+                    if save_dir:
+                        os.makedirs(save_dir, exist_ok=True)
+                        save_path = os.path.join(save_dir, f"{dir_name}_density_step_{time_step}.png")
+                        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                    else:
+                        plt.show()
+                
+            except Exception as e:
+                print(f"Error processing {file_path}: {e}")
+                continue
+        
+        # Create evolution grid for this parameter combination
+        if len(all_data) >= 4:
+            create_density_evolution_grid(all_data, time_steps, dir_name, density_param, tumble_rate, save_dir)
+    
+    print("Density time evolution visualization complete!")
+
+def create_density_evolution_grid(all_data, time_steps, dir_name, density, tumble_rate, save_dir=None):
+    """Create a grid showing density evolution over time for one parameter combination"""
+    
+    # Select representative time points (max 9 for a 3x3 grid)
+    n_points = min(9, len(all_data))
+    indices = np.linspace(0, len(all_data)-1, n_points, dtype=int)
+    
+    # Calculate grid dimensions
+    n_cols = 3
+    n_rows = (n_points + n_cols - 1) // n_cols
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
+    
+    # Handle single row or column cases
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    elif n_cols == 1:
+        axes = axes.reshape(-1, 1)
+    
+    # Find global min/max for consistent color scaling
+    global_min = np.min([np.min(data) for data in all_data])
+    global_max = np.max([np.max(data) for data in all_data])
+    
+    # Plot each selected time point
+    for i, idx in enumerate(indices):
+        row = i // n_cols
+        col = i % n_cols
+        
+        time_step = time_steps[idx]
+        data = all_data[idx]
+        
+        # Check if data is 1D or 2D and plot accordingly
+        if len(data.shape) == 1:
+            # 1D density profile
+            x = np.arange(len(data))
+            axes[row, col].plot(x, data, 'b-', linewidth=1)
+            axes[row, col].set_title(f"Step {time_step}", fontsize=12)
+            axes[row, col].set_xlabel('Position')
+            axes[row, col].set_ylabel('Density')
+            axes[row, col].grid(True, alpha=0.3)
+            axes[row, col].set_ylim(global_min, global_max)
+        else:
+            # 2D density heatmap
+            im = axes[row, col].imshow(data, cmap='viridis', origin='lower', 
+                                      aspect='equal', vmin=global_min, vmax=global_max)
+            axes[row, col].set_title(f"Step {time_step}", fontsize=12)
+            axes[row, col].set_xticks([])
+            axes[row, col].set_yticks([])
+    
+    # Hide unused subplots
+    for i in range(n_points, n_rows * n_cols):
+        row = i // n_cols
+        col = i % n_cols
+        axes[row, col].axis('off')
+    
+    # Add colorbar only if we have 2D data
+    if len(all_data[0].shape) > 1:
+        fig.subplots_adjust(right=0.9)
+        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+        cbar = fig.colorbar(im, cax=cbar_ax, label='Density Value')
+    else:
+        # For 1D data, just use tight layout
+        plt.tight_layout()
+    
+    # Add title
+    if density is not None and tumble_rate is not None:
+        title = f"Density Evolution: ρ={density:.3f}, α={tumble_rate:.3f}"
+    else:
+        title = f"Density Evolution: {dir_name}"
+    
+    plt.suptitle(title, fontsize=16, fontweight='bold')
+    
+    # Save if requested
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        filename = os.path.join(save_dir, f"density_evolution_{dir_name}.png")
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"Density evolution grid saved to: {save_dir}")
+    else:
+        plt.show()
+    
+    plt.close()
+
+def create_density_comparison_grid(runs_dir, save_dir=None):
+    """
+    Create a comparison grid of multiple density files, all stacked properly.
+    
+    Args:
+        runs_dir: Directory containing density files
+        save_dir: Optional directory to save the comparison grid
+    """
+    os.makedirs('analysis', exist_ok=True)
+    
+    if not os.path.exists(runs_dir):
+        print(f"No '{runs_dir}' directory found!")
+        return
+    
+    # Find density files and organize by parameters (try both uppercase and lowercase)
+    density_files = glob.glob(f"{runs_dir}/**/Density_*.dat", recursive=True)
+    if not density_files:
+        density_files = glob.glob(f"{runs_dir}/**/density_*.dat", recursive=True)
+    if not density_files:
+        print(f"No density files found in {runs_dir}")
+        return
+    
+    # Extract parameters and organize data
+    file_data = []
+    for density_file in density_files:
+        try:
+            dir_name = os.path.basename(os.path.dirname(density_file))
+            density_param, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+            
+            if density_param is not None and tumble_rate is not None:
+                # Load and process data
+                raw_data = np.loadtxt(density_file)
+                if raw_data.ndim == 1 and len(raw_data) == 4000:
+                    data = raw_data.reshape(40, 100)
+                else:
+                    data = raw_data
+                
+                # Stack with first line at bottom
+                stacked_data = np.flipud(data)
+                
+                file_data.append({
+                    'density': density_param,
+                    'tumble_rate': tumble_rate,
+                    'data': stacked_data,
+                    'filename': os.path.basename(density_file),
+                    'dir_name': dir_name
+                })
+                
+        except Exception as e:
+            print(f"Error processing {density_file}: {e}")
+            continue
+    
+    if not file_data:
+        print("No valid density data found!")
+        return
+    
+    # Get unique parameter values
+    densities = sorted(list(set(item['density'] for item in file_data)))
+    tumble_rates = sorted(list(set(item['tumble_rate'] for item in file_data)))
+    
+    n_rows = len(densities)
+    n_cols = len(tumble_rates)
+    
+    print(f"Creating density comparison grid: {n_rows} densities × {n_cols} tumble rates")
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
+    
+    # Handle different subplot arrangements
+    if n_rows == 1 and n_cols == 1:
+        axes = np.array([[axes]])
+    elif n_rows == 1:
+        axes = np.array([axes])
+    elif n_cols == 1:
+        axes = np.array([[ax] for ax in axes])
+    
+    # Find global min/max for consistent color scaling
+    all_data = [item['data'] for item in file_data]
+    global_min = np.min([np.min(data) for data in all_data])
+    global_max = np.max([np.max(data) for data in all_data])
+    
+    # Create lookup dictionary
+    data_dict = {(item['density'], item['tumble_rate']): item for item in file_data}
+    
+    # Fill the grid
+    for row, density in enumerate(densities):
+        for col, tumble_rate in enumerate(tumble_rates):
+            if (density, tumble_rate) in data_dict:
+                item = data_dict[(density, tumble_rate)]
+                data = item['data']
+                
+                im = axes[row, col].imshow(data, cmap='viridis', origin='lower', 
+                                          aspect='equal', vmin=global_min, vmax=global_max)
+                axes[row, col].set_xticks([])
+                axes[row, col].set_yticks([])
+                
+                # Add mean and std as text
+                mean_val = np.mean(data)
+                std_val = np.std(data)
+                axes[row, col].text(0.02, 0.98, f'μ={mean_val:.3f}\nσ={std_val:.3f}', 
+                                   transform=axes[row, col].transAxes, 
+                                   verticalalignment='top', fontsize=8, 
+                                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            else:
+                axes[row, col].text(0.5, 0.5, 'No Data', 
+                                   transform=axes[row, col].transAxes, 
+                                   horizontalalignment='center', verticalalignment='center',
+                                   fontsize=12)
+                axes[row, col].set_xticks([])
+                axes[row, col].set_yticks([])
+    
+    # Add labels
+    for row, density in enumerate(densities):
+        axes[row, 0].set_ylabel(f"{density:.2f}", fontsize=14, fontweight='bold')
+    
+    for col, tumble_rate in enumerate(tumble_rates):
+        axes[0, col].set_xlabel(f"{tumble_rate:.3f}", fontsize=14, fontweight='bold')
+        axes[0, col].xaxis.set_label_position('top')
+    
+    # Add axis titles
+    fig.text(0.02, 0.5, 'Density ρ', fontsize=20, fontweight='bold', 
+             rotation=90, va='center', ha='center')
+    fig.text(0.5, 0.95, 'Tumble Rate α', fontsize=20, fontweight='bold', 
+             ha='center', va='center')
+    
+    # Add colorbar
+    fig.subplots_adjust(left=0.08, right=0.88, top=0.88, bottom=0.1)
+    cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
+    cbar = fig.colorbar(im, cax=cbar_ax, label='Density Value')
+    cbar.set_label('Density Value', fontsize=16, fontweight='bold')
+    
+    # Add main title
+    plt.figtext(0.5, 0.98, 'Density Distribution Comparison (Stacked)', 
+                fontsize=24, fontweight='bold', ha='center')
+    
+    # Save the comparison grid
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, 'density_comparison_grid.png')
+    else:
+        save_path = 'analysis/density_comparison_grid.png'
+    
+    
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"Density comparison grid saved to: {save_path}")
+    plt.close()
 
 
+
+def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual=True, create_comparison_grid=False, run_date=None):
+    """
+    Create 2D stacked visualization of 1D density evolution over time.
+    Each 1D density profile becomes a horizontal line, stacked vertically by time.
+    
+    Args:
+        runs_dir: Directory containing density files
+        save_dir: Optional directory to save images
+        show_individual: Whether to display each parameter combination individually
+        create_comparison_grid: Whether to create a comparison grid of all parameter combinations
+    """
+    os.makedirs('analysis', exist_ok=True)
+    
+    if not os.path.exists(runs_dir):
+        print(f"No '{runs_dir}' directory found!")
+        return
+    
+    # Find all density files
+    density_files = glob.glob(f"{runs_dir}/**/Density_*.dat", recursive=True)
+    if not density_files:
+        density_files = glob.glob(f"{runs_dir}/**/density_*.dat", recursive=True)
+    if not density_files:
+        print(f"No density files found in {runs_dir}")
+        return
+    
+    print(f"Found {len(density_files)} density files")
+    
+    # Group files by parameter combination (directory)
+    param_groups = {}
+    for density_file in density_files:
+        dir_path = os.path.dirname(density_file)
+        dir_name = os.path.basename(dir_path)
+        
+        if dir_name not in param_groups:
+            param_groups[dir_name] = []
+        
+        # Extract time step from filename
+        filename = os.path.basename(density_file)
+        match = re.search(r'[Dd]ensity_(\d+)\.dat', filename)
+        if match:
+            time_step = int(match.group(1))
+            param_groups[dir_name].append((time_step, density_file))
+    
+    # Store processed data for comparison grid
+    all_processed_data = []
+    
+    # Process each parameter combination
+    for dir_name, files in param_groups.items():
+        if len(files) < 2:
+            print(f"Skipping {dir_name}: only {len(files)} density file(s) found")
+            continue
+        
+        # Sort by time step
+        files.sort(key=lambda x: x[0])
+        
+        print(f"Processing {dir_name}: {len(files)} time steps from {files[0][0]} to {files[-1][0]}")
+        
+        # Extract parameters
+        density_param, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+        
+        # Load all 1D density profiles
+        density_matrix = []
+        time_steps = []
+        
+        for time_step, file_path in files:
+            try:
+                raw_data = np.loadtxt(file_path)
+                
+                # Ensure we have 1D data
+                if raw_data.ndim == 1:
+                    density_matrix.append(raw_data)
+                    time_steps.append(time_step)
+                else:
+                    print(f"Skipping {file_path}: expected 1D data but got {raw_data.shape}")
+                    
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+                continue
+        
+        if len(density_matrix) < 2:
+            print(f"Not enough valid 1D density files for {dir_name}")
+            continue
+        
+        # Convert to 2D array: rows = time steps, columns = spatial positions
+        density_2d = np.array(density_matrix)
+        
+        print(f"Created 2D density array: {density_2d.shape} (time_steps × spatial_positions)")
+        
+        # Store data for comparison grid
+        if create_comparison_grid and density_param is not None and tumble_rate is not None:
+            all_processed_data.append({
+                'density': density_param,
+                'tumble_rate': tumble_rate,
+                'dir_name': dir_name,
+                'density_2d': density_2d,
+                'time_steps': time_steps,
+                'gamma': gamma,
+                'g': g
+            })
+        
+        # Create individual visualization
+        if show_individual or not create_comparison_grid:
+            fig, ax = plt.subplots(1, 1, figsize=(15, 10))
+            
+            # Create the heatmap
+            im = ax.imshow(density_2d, cmap='viridis', aspect='auto', origin='lower', 
+                          interpolation='nearest')
+            
+            # Set up axes
+            ax.set_xlabel('Spatial Position', fontsize=14)
+            ax.set_ylabel('Time Step', fontsize=14)
+            
+            # Set y-tick labels to actual time steps (subsample if too many)
+            n_ticks = min(10, len(time_steps))
+            tick_indices = np.linspace(0, len(time_steps)-1, n_ticks, dtype=int)
+            ax.set_yticks(tick_indices)
+            ax.set_yticklabels([str(time_steps[i]) for i in tick_indices])
+            
+            # Create title
+            if density_param is not None and tumble_rate is not None:
+                title = f"Density Evolution Over Time\n"
+                title += f"ρ={density_param:.3f}, α={tumble_rate:.3f}"
+                if gamma is not None:
+                    title += f", γ={gamma:.3f}"
+                if g is not None:
+                    title += f", g={g:.3f}"
+            else:
+                title = f"Density Evolution: {dir_name}"
+            
+            ax.set_title(title, fontsize=16, fontweight='bold')
+            
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax, label='Density Value')
+            cbar.set_label('Density Value', fontsize=14, fontweight='bold')
+            
+            # Add grid for better readability
+            ax.grid(True, alpha=0.3, linestyle='--')
+            
+            # Add statistics as text
+            mean_val = np.mean(density_2d)
+            std_val = np.std(density_2d)
+            min_val = np.min(density_2d)
+            max_val = np.max(density_2d)
+            
+            stats_text = f'μ={mean_val:.3f}\nσ={std_val:.3f}\nmin={min_val:.3f}\nmax={max_val:.3f}'
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                   verticalalignment='top', fontsize=12,
+                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.9))
+            
+            plt.tight_layout()
+            
+            # Save if requested
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+                if run_date:
+                    safe_dir_name = dir_name.replace('/', '_').replace('\\', '_')
+                    save_path = os.path.join(save_dir, f"density_evolution_stacked_{safe_dir_name}_{run_date}.png")
+                else:
+                    safe_dir_name = dir_name.replace('/', '_').replace('\\', '_')
+                    save_path = os.path.join(save_dir, f"density_evolution_stacked_{safe_dir_name}.png")
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                print(f"Saved stacked density evolution: {save_path}")
+            
+            if show_individual:
+                plt.show()
+            else:
+                plt.close()
+    
+    # Create comparison grid if requested
+    if create_comparison_grid and all_processed_data:
+        create_density_evolution_comparison_grid(all_processed_data, save_dir, run_date)
+    print("Density evolution stacked visualization complete!")
+
+def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, run_date=None):
+    """
+    Create a comparison grid showing 2D stacked density evolution for all parameter combinations
+    
+    Args:
+        all_processed_data: List of dictionaries containing processed density data for each parameter combination
+        save_dir: Optional directory to save the comparison grid
+    """
+    if not all_processed_data:
+        print("No processed data available for comparison grid")
+        return
+    
+    # Get unique parameter values
+    densities = sorted(list(set(item['density'] for item in all_processed_data)))
+    tumble_rates = sorted(list(set(item['tumble_rate'] for item in all_processed_data)))
+    
+    n_rows = len(densities)
+    n_cols = len(tumble_rates)
+    
+    print(f"Creating density evolution comparison grid: {n_rows} densities × {n_cols} tumble rates")
+    
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
+    
+    # Handle different subplot arrangements
+    if n_rows == 1 and n_cols == 1:
+        axes = np.array([[axes]])
+    elif n_rows == 1:
+        axes = np.array([axes])
+    elif n_cols == 1:
+        axes = np.array([[ax] for ax in axes])
+    
+    # Find global min/max for consistent color scaling across all data
+    all_density_2d = [item['density_2d'] for item in all_processed_data]
+    global_min = np.min([np.min(data) for data in all_density_2d])
+    global_max = np.max([np.max(data) for data in all_density_2d])
+    
+    # Create lookup dictionary for quick access
+    data_dict = {(item['density'], item['tumble_rate']): item for item in all_processed_data}
+    
+    # Fill the grid
+    for row, density in enumerate(densities):
+        for col, tumble_rate in enumerate(tumble_rates):
+            if (density, tumble_rate) in data_dict:
+                item = data_dict[(density, tumble_rate)]
+                density_2d = item['density_2d']
+                time_steps = item['time_steps']
+                
+                # Create the heatmap
+                im = axes[row, col].imshow(density_2d, cmap='viridis', aspect='auto', 
+                                          origin='lower', interpolation='nearest',
+                                          vmin=global_min, vmax=global_max)
+                
+                # Set up y-tick labels to show time steps (subsample if too many)
+                n_ticks = min(5, len(time_steps))
+                tick_indices = np.linspace(0, len(time_steps)-1, n_ticks, dtype=int)
+                axes[row, col].set_yticks(tick_indices)
+                axes[row, col].set_yticklabels([str(time_steps[i]) for i in tick_indices], fontsize=8)
+                
+                # Remove x-ticks for cleaner look
+                axes[row, col].set_xticks([])
+                
+                # Add parameter values as subtitle
+                axes[row, col].set_title(f"ρ={density:.2f}, α={tumble_rate:.3f}", fontsize=10)
+                
+                # Add basic statistics as text
+                mean_val = np.mean(density_2d)
+                std_val = np.std(density_2d)
+                axes[row, col].text(0.02, 0.98, f'μ={mean_val:.2f}\nσ={std_val:.2f}', 
+                                   transform=axes[row, col].transAxes, 
+                                   verticalalignment='top', fontsize=8, 
+                                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+            else:
+                # No data for this parameter combination
+                axes[row, col].text(0.5, 0.5, 'No Data', 
+                                   transform=axes[row, col].transAxes, 
+                                   horizontalalignment='center', verticalalignment='center',
+                                   fontsize=12)
+                axes[row, col].set_xticks([])
+                axes[row, col].set_yticks([])
+    
+    # Add row and column labels
+    for row, density in enumerate(densities):
+        axes[row, 0].set_ylabel(f"ρ={density:.2f}", fontsize=12, fontweight='bold')
+    
+    for col, tumble_rate in enumerate(tumble_rates):
+        axes[-1, col].set_xlabel(f"α={tumble_rate:.3f}", fontsize=12, fontweight='bold')
+    
+    # Add overall axis labels
+    fig.text(0.02, 0.5, 'Density ρ', fontsize=18, fontweight='bold', 
+             rotation=90, va='center', ha='center')
+    fig.text(0.5, 0.02, 'Tumble Rate α', fontsize=18, fontweight='bold', 
+             ha='center', va='center')
+    
+    # Add colorbar
+    fig.subplots_adjust(left=0.08, right=0.92, top=0.92, bottom=0.08)
+    cbar_ax = fig.add_axes([0.94, 0.15, 0.02, 0.7])
+    cbar = fig.colorbar(im, cax=cbar_ax, label='Density Value')
+    cbar.set_label('Density Value', fontsize=14, fontweight='bold')
+    
+    # Add main title
+    plt.figtext(0.5, 0.97, 'Density Evolution Comparison Grid (2D Stacked)', 
+                fontsize=20, fontweight='bold', ha='center')
+    plt.figtext(0.5, 0.94, 'Time evolution shown as stacked 1D profiles (vertical: time, horizontal: space)', 
+                fontsize=14, ha='center', style='italic')
+    
+    # Save the comparison grid
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        if run_date:
+            save_path = os.path.join(save_dir, f'density_evolution_comparison_grid_{run_date}.png')
+        else:
+            save_path = os.path.join(save_dir, 'density_evolution_comparison_grid.png')
+    else:
+        if run_date:
+            save_path = f'analysis/density_evolution_comparison_grid_{run_date}.png'
+        else:
+            save_path = 'analysis/density_evolution_comparison_grid.png'
+        os.makedirs('analysis', exist_ok=True)
+    
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"Density evolution comparison grid saved to: {save_path}")
+    plt.close()
 
 if __name__ == "__main__":
     import sys
@@ -701,7 +1453,17 @@ if __name__ == "__main__":
             runs_dir = "runs"
             print(f"Using default runs directory: {runs_dir}")
     
+    # Extract run date from directory name for use in output filenames
+    run_date = ""
+    if "run_" in runs_dir:
+        timestamp = os.path.basename(runs_dir)[4:]  # Remove "run_" prefix
+        try:
+            run_date = datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y%m%d_%H%M%S")
+        except:
+            run_date = timestamp.replace(":", "").replace(" ", "_")
+    
     print("Starting simulation visualization...")
+    print(f"Run date identifier: {run_date}")
     
     # Show options to user
     print("\nChoose visualization mode:")
@@ -712,15 +1474,15 @@ if __name__ == "__main__":
     print("5. View single heatmap from file path")
     print("6. View time evolution of single configuration")
     print("7. Analyze movement statistics")
-    print("8. Analyze average density and average flux for all runs")
+    print("12. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-8): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
+            mode_choice = input("\nEnter your choice (1-7, 12): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '12']:
                 break
             else:
-                print("Please enter 1, 2, 3, 4, 5, 6, 7 or 8.")
+                print("Please enter a number from 1-7 or 12.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -780,41 +1542,4 @@ if __name__ == "__main__":
         # View single heatmap from file path
         file_path = input("Enter path to occupancy .dat file: ").strip()
         if os.path.exists(file_path):
-            save_choice = input("Save image to file? (y/n): ").strip().lower()
-            save_path = None
-            if save_choice == 'y':
-                save_path = input("Enter save path (or press Enter for auto-name): ").strip()
-                if not save_path:
-                    filename = os.path.basename(file_path).replace('.dat', '.png')
-                    save_path = f"analysis/{filename}"
-            
-            print_single_heatmap(file_path=file_path, save_path=save_path)
-            print("Single heatmap complete!")
-        else:
-            print(f"File not found: {file_path}")
-    
-    elif mode_choice == '6':
-        # View time evolution of single configuration
-        dir_path = input("Enter path to configuration directory: ").strip()
-        if os.path.exists(dir_path):
-            save_choice = input("Save images and animation? (y/n): ").strip().lower()
-            save_dir = "analysis/time_evolution" if save_choice == 'y' else None
-            
-            show_choice = input("Show individual frames? (y/n): ").strip().lower()
-            show_individual = show_choice == 'y'
-            
-            visualize_time_evolution(dir_path, save_dir=save_dir, show_individual=show_individual)
-            print("Time evolution visualization complete!")
-        else:
-            print(f"Directory not found: {dir_path}")
-    
-    elif mode_choice == '7':
-        # Analyze movement statistics
-        print("Analyzing movement statistics...")
-        print_moving_particles(runs_dir)
-    
-    elif mode_choice == '8':
-        # Analyze average density and flux
-        print("Analyzing average density and flux...")
-        analyze_average_density_flux(runs_dir)
-        print("Average density and flux analysis complete!")
+            save_choice = input("Save image to file? (y/n): "

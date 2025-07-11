@@ -15,6 +15,6 @@ echo "Available options: --track-movement, --track-flux, --track-density, --move
 echo ""
 
 # Run the initialization script with the new flags
-# Modify the line below to customize your run
+# Modify the line below to customize your run #director-based-sin
 ./run_4_potential.sh --move-prob uneven-sin --track-movement --track-flux --track-density "$@" 
 
