@@ -182,9 +182,11 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     folder_name = os.path.basename(folder)
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        output_file = f'{save_dir}/comp_{run_date[:16]}.png'
+        output_file = f'{save_dir}/comparison_grid_acc_{folder_name}.png'
     else:
-        output_file = f'{folder}/comp_.png'
+        output_file = f'{folder}/comparison_grid_acc_.png'
+    
+    print(f"Saving comparison grid to '{output_file}'")
 
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
     print(f"Comparison grid saved to '{output_file}'")
@@ -370,9 +372,9 @@ def visualize_time_evolution(runs_dir, save_dir=None, show_individual=False):
 
 
     # Find all occupancy files and sort by time step
-    occupancy_files = glob.glob(f"{directory_path}/Occupancy_*.dat")
+    occupancy_files = glob.glob(f"{runs_dir}/Occupancy_*.dat")
     if not occupancy_files:
-        print(f"No occupancy files found in {directory_path}")
+        print(f"No occupancy files found in {runs_dir}")
         return
     
     # Extract time steps and sort
@@ -392,7 +394,7 @@ def visualize_time_evolution(runs_dir, save_dir=None, show_individual=False):
     print(f"Found {len(time_files)} time steps from {time_files[0][0]} to {time_files[-1][0]}")
     
     # Extract parameters from directory name
-    dir_name = os.path.basename(directory_path)
+    dir_name = os.path.basename(runs_dir)
     density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
     
     # Create output directory if requested
@@ -498,7 +500,7 @@ def create_evolution_grid(all_data, time_files, dir_name, density, tumble_rate, 
     
     plt.close()
 
-def print_moving_particles(runs_dir="runs"):
+def print_moving_particles(runs_dir="runs", save_dir=None):
     """
     Analyze and print movement statistics from simulation results, with plots
     """
@@ -555,19 +557,19 @@ def print_moving_particles(runs_dir="runs"):
      
                     # Create individual plot for this simulation
                     create_individual_movement_plot(timesteps, moving_counts, subdir_name, 
-                                                  density, tumble_rate, gamma, g, run_date)
+                                                  density, tumble_rate, gamma, g, run_date, save_dir=save_dir)
                 
             except Exception as e:
                 print(f"Error reading {stats_file}: {e}")
     
     if all_data:
         # Create combined plots
-        create_combined_movement_plots(all_data, run_date)
+        create_combined_movement_plots(all_data, run_date, save_dir=save_dir)
         print(f"\nMovement analysis complete! Created {len(all_data)} individual plots and combined plots.")
     else:
         print("No valid movement data found!")
 
-def create_individual_movement_plot(timesteps, moving_counts, name, density, tumble_rate, gamma, g, run_date):
+def create_individual_movement_plot(timesteps, moving_counts, name, density, tumble_rate, gamma, g, run_date, save_dir=None):
     """Create an individual plot for one simulation's movement data"""
     
     fig, ax = plt.subplots(1, 1, figsize=(10, 6))
@@ -599,13 +601,16 @@ def create_individual_movement_plot(timesteps, moving_counts, name, density, tum
            transform=ax.transAxes, verticalalignment='top',
            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        analysis_dir = f"{save_dir}/individual_movement_{name}.png"
+    else:
+        analysis_dir = f"analysis/individual_movement_{name}.png"
     # Save plot with optimized settings
-    filename = f'analysis/movement_{run_date}_{name}.png'
-    plt.savefig(filename, dpi=150, bbox_inches='tight', facecolor='white')  # Reduced DPI for smaller files
+    plt.savefig(analysis_dir, dpi=150, bbox_inches='tight', facecolor='white')  # Reduced DPI for smaller files
     plt.close()
-    print(f"Individual movement plot saved: {filename}")
 
-def create_combined_movement_plots(all_data, run_date=""):
+def create_combined_movement_plots(all_data, run_date="", save_dir=None):
     """Create combined plots showing all simulations together"""
     
     # Plot 1: All trajectories on one plot
@@ -621,24 +626,26 @@ def create_combined_movement_plots(all_data, run_date=""):
     ax.set_title('Movement Comparison: All Simulations', fontsize=16, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    
     plt.tight_layout()
-    if run_date:
-        filename = f'analysis/movement_{run_date}_all_trajectories.png'
+    
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        analysis_dir = f"{save_dir}/combined_movement_plot.png"
     else:
-        filename = 'analysis/movement_all_trajectories.png'
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
+        analysis_dir = 'analysis/combined_movement_plot.png'
+
+    plt.savefig(analysis_dir, dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"Combined trajectories plot saved: {filename}")
+    print(f"Combined trajectories plot saved: {analysis_dir}")
     
     # Plot 2: Average movement vs density (if we have multiple densities)
     densities = sorted(list(set(d['density'] for d in all_data)))
     tumble_rates = sorted(list(set(d['tumble_rate'] for d in all_data)))
     
     if len(tumble_rates) > 1:
-        create_movement_plots_by_tumble_rate(all_data, run_date)
+        create_movement_plots_by_tumble_rate(all_data, run_date, save_dir=save_dir)
 
-def create_movement_plots_by_tumble_rate(all_data, run_date=""):
+def create_movement_plots_by_tumble_rate(all_data, run_date="", save_dir=None):
     """Create separate plots for each tumble rate, showing different densities"""
     
     # Get unique tumble rates
@@ -668,13 +675,15 @@ def create_movement_plots_by_tumble_rate(all_data, run_date=""):
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
         plt.tight_layout()
-        if run_date:
-            filename = f'analysis/movement_{run_date}_tumble_rate_{tumble_rate:.3f}.png'
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            analysis_dir = f"{save_dir}/combined_movement_plot_t_{tumble_rate}.png"
         else:
-            filename = f'analysis/movement_tumble_rate_{tumble_rate:.3f}.png'
-        plt.savefig(filename, dpi=300, bbox_inches='tight')
+            analysis_dir = f"analysis/combined_movement_plot_t_{tumble_rate}.png"
+
+        plt.savefig(analysis_dir, dpi=300, bbox_inches='tight')
         plt.close()
-        print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {filename}")
+        print(f"Movement plot for tumble rate {tumble_rate:.3f} saved: {save_dir}")
 
 def visualize_density_stack(runs_dir, save_dir=None, show_individual=True):
     """
@@ -1441,6 +1450,91 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
     print(f"Density evolution comparison grid saved to: {save_path}")
     plt.close()
 
+def average_density_option_9(save_dir=None, save_choice=None, start_step=None):
+    folder_results = find_files_in_directory(runs_dir)
+    folders = [full_path for _, full_path, _ in folder_results]
+    all_avg_profiles = []
+    param_grid = []
+    for folder in folders:
+        # Find all density files in this folder
+        density_files = glob.glob(f"{folder}/Density_*.dat")
+        time_files = []
+        for file in density_files:
+            match = re.search(r'Density_(-?\d+)\.dat', file)
+            if match:
+                time_step = int(match.group(1))
+                if time_step >= start_step:
+                    time_files.append((time_step, file))
+        time_files.sort()
+        if not time_files:
+            continue
+        # Load and average
+        profiles = []
+        for _, file_path in time_files:
+            raw_data = np.loadtxt(file_path)
+            if raw_data.ndim == 1:
+                profiles.append(raw_data)
+            elif raw_data.ndim == 2:
+                profiles.append(np.mean(raw_data, axis=0))
+        if profiles:
+            avg_profile = np.mean(profiles, axis=0)
+            # Extract parameters
+            dir_name = os.path.basename(folder)
+            density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
+            all_avg_profiles.append({
+                'density': density,
+                'tumble_rate': tumble_rate,
+                'avg_profile': avg_profile,
+                'dir_name': dir_name
+            })
+            param_grid.append((density, tumble_rate))
+            # Plot individual profile
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+                plt.figure(figsize=(10, 6))
+                plt.plot(avg_profile)
+                plt.title(f"Average Density over X\n{dir_name}, start step {start_step}")
+                plt.xlabel("X Position")
+                plt.ylabel("Average Density")
+                plt.grid(True, alpha=0.3)
+                plt.tight_layout()
+                plt.savefig(os.path.join(save_dir, f"avg_density_{dir_name}_from_{start_step}.png"), dpi=300)
+                plt.close()
+    # Create comparison grid
+    if all_avg_profiles:
+        densities = sorted(list(set(p['density'] for p in all_avg_profiles if p['density'] is not None)))
+        tumble_rates = sorted(list(set(p['tumble_rate'] for p in all_avg_profiles if p['tumble_rate'] is not None)))
+        n_rows = len(densities)
+        n_cols = len(tumble_rates)
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
+        for row, density in enumerate(densities):
+            for col, tumble_rate in enumerate(tumble_rates):
+                ax = axes[row, col]
+                found = False
+                for p in all_avg_profiles:
+                    if p['density'] == density and p['tumble_rate'] == tumble_rate:
+                        ax.plot(p['avg_profile'])
+                        ax.set_title(f"ρ={density:.2f}, α={tumble_rate:.3f}")
+                        ax.set_xlabel("X Position")
+                        ax.set_ylabel("Avg Density")
+                        ax.grid(True, alpha=0.3)
+                        found = True
+                        break
+                if not found:
+                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=12)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+        plt.suptitle(f"Average Density over X (from step {start_step})", fontsize=18, fontweight='bold')
+        plt.tight_layout()
+        if save_dir:
+            plt.savefig(os.path.join(save_dir, f"comparison_grid_avg_density_from_{start_step}.png"), dpi=300)
+            print(f"Saved comparison grid to {os.path.join(save_dir, f'comparison_grid_avg_density_from_{start_step}.png')}")
+        else:
+            plt.show()
+    else:
+        print("No valid average profiles found for the given timestep.")
+
+
 if __name__ == "__main__":
     import sys
     
@@ -1493,14 +1587,15 @@ if __name__ == "__main__":
     print("6. View time evolution of single configuration")
     print("7. Analyze movement statistics")
     print("8. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
+    print("9. Average density over x for all runs from a given timestep, with comparison grid")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-8): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
+            mode_choice = input("\nEnter your choice (1-9): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
                 break
             else:
-                print("Please enter a number from 1-8.")
+                print("Please enter a number from 1-9.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -1514,7 +1609,7 @@ if __name__ == "__main__":
                 break
             except ValueError:
                 print("Please enter a valid integer.")
-
+        
         print(f"Analyzing occupancy files with number: {number}")
         create_parameter_sweep_visualization(runs_dir, number=number, save_dir=analysis_dir)
         print("Visualization complete!")
@@ -1575,7 +1670,7 @@ if __name__ == "__main__":
 
     elif mode_choice == '6':
         # View time evolution of single configuration
-        dir_path = input("Enter path to configuration directory: ").strip()
+        dir_path = input("Enter path to specific configuration folder: ").strip()
         if os.path.exists(dir_path):
             save_choice = input("Save images and animation? (y/n): ").strip().lower()
             save_dir = os.path.join(analysis_dir, "time_evolution") if save_choice == 'y' else None
@@ -1591,6 +1686,7 @@ if __name__ == "__main__":
     elif mode_choice == '7':
         # Analyze movement statistics
         print("Analyzing movement statistics...")
+        analysis_dir = os.path.join(analysis_dir, "moving_particles_statistics")
         print_moving_particles(runs_dir, save_dir=analysis_dir)
 
     elif mode_choice == '8':
@@ -1610,3 +1706,18 @@ if __name__ == "__main__":
             run_date=run_date
         )
         print("2D stacked density evolution complete!")
+
+    # Option 9: Average density over x for all runs from a given timestep, with comparison grid
+    if mode_choice == '9':
+        while True:
+            try:
+                start_input = input("Enter the starting timestep for averaging (e.g., 10000): ").strip()
+                start_step = int(start_input)
+                break
+            except ValueError:
+                print("Please enter a valid integer.")
+
+        save_choice = input("Save comparison grid to file? (y/n): ").strip().lower()
+        save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}") if save_choice == 'y' else None
+        average_density_option_9(save_dir=save_dir, save_choice=save_choice, start_step=start_step)
+        
