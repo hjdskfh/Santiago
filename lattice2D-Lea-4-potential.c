@@ -35,7 +35,7 @@ long int ParticleOrder[MaxNPart]; // Order in which particles are updated
 char RunName[100]; // Name of the run for output directory
 char InitialFile[200]; // Path to initial occupancy file (optional)
 char PotentialType[50]; // Type of potential to use
-int PotentialTypeCode = 0; // Cached potential type: 0=default, 1=uneven-sin, 2=director-based-sin
+int PotentialTypeCode = 0; // Cached potential type: 0=default, 1=uneven-sin, 2=director-uneven-sin, 3=director-symmetric-sin
 double Density; // Particle density, as N/(Lx*Ly). Its max value is nmax
 double TumbRate; // Tumbling rate
 long int NParticles; // Number of particles, computed from the density
@@ -67,8 +67,11 @@ typedef struct {
 // Forward declarations for initialization functions
 void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound);
 void InitializeUnevenSinMap(double lower_bound, double upper_bound);
-void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound);
+void InitializeDirectorUnevenSinMap(double lower_bound, double upper_bound);
+void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound);
 void InitializeMoveProbMap(void);
+
+
 
 // Debug functions for printing movement probability map
 void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y);
@@ -115,13 +118,22 @@ void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y) {
 
 // Convenience function to print a sample of the map
 void PrintMoveProbMapSample(void) {
-    PrintMoveProbMap(150, 160, 0, 4);  // Print first 10x5 region
+    PrintMoveProbMap(0, 9, 0, 4);  // Print first 10x5 region for easier debugging
+    // Print a few values directly for NaN/Inf check
+    for (int x = 0; x < 10; x++) {
+        for (int y = 0; y < 5; y++) {
+            if (isnan(MoveProbMap[x][y]) || isinf(MoveProbMap[x][y])) {
+                fprintf(stderr, "[ERROR] MoveProbMap[%d][%d] is invalid: %f\n", x, y, MoveProbMap[x][y]);
+            }
+        }
+    }
 }
 
 // Registry of all available potential types - ADD NEW POTENTIALS HERE
 static const PotentialDefinition POTENTIAL_REGISTRY[] = {
     {"uneven-sin", InitializeUnevenSinMap},
-    {"director-based-sin", InitializeDirectorBasedSinMap},
+    {"director-uneven-sin", InitializeDirectorUnevenSinMap},
+    {"director-symmetric-sin", InitializeDirectorSymmetricSinMap},
     {NULL, NULL} // Terminator
 };
 
@@ -149,6 +161,10 @@ double golden_section_search(double (*func)(double), double a, double b, double 
 
 // Rescale x from [f_min, f_max] to [lower_bound, upper_bound]
 double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min) {
+    if (fabs(f_max - f_min) < 1e-12) {
+        // Avoid division by zero
+        return 0.5;
+    }
     return lower_bound + (func(x) - f_min) / (f_max - f_min) * (upper_bound - lower_bound);
 }
 
@@ -167,28 +183,51 @@ double shifted_uneven_sin_for_search(double x) {
     return G * uneven_sin_function(x, Gamma) + 0.5;
 }
 
+double symmetric_sin_for_search(double x) {
+    // Symmetric version: G * sin(2 * x) + 0.5
+    return G * sin(2 * x) + 0.5;
+}
+
 // Unified potential initialization function
 void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound) {
-    // Find the x value where the maximum occurs for normalization
     double x_max = golden_section_search(func, 0.0, M_PI, 1e-6);
+    if (x_max < 0.0 || x_max > 2 * M_PI) {
+        fprintf(stderr, "[ERROR] Golden section search returned invalid x_max: %.6f\n", x_max);
+        exit(1);
+    }
+    fprintf(stderr, "[PRINT] Golden section search returned invalid x_max: %.6f\n", x_max);
+
     double f_max = func(x_max);
-    
-    for (int x = 0; x < Lx; x++) {
-        for (int y = 0; y < Ly; y++) {
-            double scale_x = ((double)x / Lx) * 2 * M_PI;
-            
-            //rescale function output to [lower_bound, upper_bound]
-            MoveProbMap[x][y] = rescaling_function(func, scale_x, lower_bound, upper_bound, f_max, -f_max);
-          
-            // Ensure valid probability range
-            if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
-            if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
+    // Find true minimum over [0, 2π]
+    double f_min = f_max;
+    for (double x = 0.0; x <= 2*M_PI; x += 0.01) {
+        double val = func(x);
+        if (val < f_min) f_min = val;
+    }
+    if (fabs(f_max - f_min) < 1e-12) {
+        fprintf(stderr, "[ERROR] f_max == f_min (%.6f), division by zero avoided. Setting all MoveProbMap to 0.5.\n", f_max);
+        for (int x = 0; x < Lx; x++) {
+            for (int y = 0; y < Ly; y++) {
+                MoveProbMap[x][y] = 0.5;
+            }
+        }
+    } else {
+        for (int x = 0; x < Lx; x++) {
+            for (int y = 0; y < Ly; y++) {
+                double scale_x = ((double)x / Lx) * 2 * M_PI;
+                MoveProbMap[x][y] = rescaling_function(func, scale_x, lower_bound, upper_bound, f_max, f_min);
+                // Clamp to [0,1]
+                if (isnan(MoveProbMap[x][y]) || isinf(MoveProbMap[x][y])) {
+                    fprintf(stderr, "[ERROR] MoveProbMap[%d][%d] is invalid: %f\n", x, y, MoveProbMap[x][y]);
+                    exit(1);
+                }
+                if (MoveProbMap[x][y] < 0.0) MoveProbMap[x][y] = 0.0;
+                if (MoveProbMap[x][y] > 1.0) MoveProbMap[x][y] = 1.0;
+            }
         }
     }
-    PrintMoveProbMap(150,170,0,4); // Print a sample of the map
-
-    fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", 
-           PotentialType, lower_bound, upper_bound);
+    PrintMoveProbMap(150,170,0,4);
+    fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", PotentialType, lower_bound, upper_bound);
 }
 
 // Wrapper functions for backward compatibility and registry
@@ -196,37 +235,53 @@ void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
     InitializeSinPotentialMap(uneven_sin_for_search, lower_bound, upper_bound);
 }
 
-void InitializeDirectorBasedSinMap(double lower_bound, double upper_bound) {
+void InitializeDirectorUnevenSinMap(double lower_bound, double upper_bound) {
     InitializeSinPotentialMap(shifted_uneven_sin_for_search, lower_bound, upper_bound); // bounds not used for this type
 }
 
+void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound) {
+    // This potential is symmetric, so we can use the same function
+    fprintf(stderr, "[DEBUG] Initializing director-symmetric-sin with G=%.6f, lower=%.3f, upper=%.3f\n", G, lower_bound, upper_bound);
+    if (fabs(G) > 10.0) {
+        fprintf(stderr, "[ERROR] G parameter is too large (G=%.6f). This may cause instability.\n", G);
+        exit(1);
+    }
+    InitializeSinPotentialMap(symmetric_sin_for_search, lower_bound, upper_bound);
+    fprintf(stderr, "[DEBUG] Finished InitializeSinPotentialMap for director-symmetric-sin. Printing MoveProbMapSample...\n");
+    // Print a sample of the probability map for debugging
+    PrintMoveProbMapSample();
+}
+
+
 // Simple function to calculate movement probability based on potential type
 double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
-    (void)dir_x; // Suppress unused parameter warning
-    
-    if (strcmp(PotentialType, "default") == 0) {
-        return 1.0; // Always allow movement
-    }
-    
-    if (strcmp(PotentialType, "director-based-sin") == 0) {
-        // For director-based potential, check director orientation
-        if (dir_y != 0) {
-            // Director is pointing in ±y direction -> neutral probability
-            return 0.5;
-        } else {
-            // Director is pointing in ±x direction -> use sinusoidal potential
+    (void)dir_x;
+
+    switch (PotentialTypeCode) {
+        case 0: // "default"
+            return 1.0;
+
+        case 1: // "uneven-sin"
             if (!MoveProbMapInitialized) {
                 InitializeMoveProbMap();
             }
             return MoveProbMap[x][y];
-        }
+
+        case 2: // "director-uneven-sin" both case 2 and 3 use same logic
+        case 3: // "director-symmetric-sin"
+            if (dir_y != 0) {
+                return 0.5;
+            } else {
+                if (!MoveProbMapInitialized) {
+                    InitializeMoveProbMap();
+                }
+                return MoveProbMap[x][y];
+            }
+
+        default:
+            fprintf(stderr, "Error: Unknown PotentialTypeCode %d\n", PotentialTypeCode);
+            exit(1);
     }
-    
-    // All other types use the pre-calculated map
-    if (!MoveProbMapInitialized) {
-        InitializeMoveProbMap();
-    }
-    return MoveProbMap[x][y];
 }
 
 // Initialize the movement probability map based on potential type
@@ -273,8 +328,12 @@ void SetPotentialFunction(const char* potential_type) {
         PotentialTypeCode = 1;
         CalculateMoveProb = CalculateMovementProbability;
         return;
-    } else if (strcmp(potential_type, "director-based-sin") == 0) {
+    } else if (strcmp(potential_type, "director-uneven-sin") == 0) {
         PotentialTypeCode = 2;
+        CalculateMoveProb = CalculateMovementProbability;
+        return;
+    } else if (strcmp(potential_type, "director-symmetric-sin") == 0) {
+        PotentialTypeCode = 3;
         CalculateMoveProb = CalculateMovementProbability;
         return;
     }
@@ -364,10 +423,10 @@ void CleanupMovementTracking(void) {
 // Reorders each time the order of the particles
 // Implementation of Fisher–Yates shuffle
 void shuffle(long int *array, long int n) {
-	long int i,j,t;
-			
+    long int i,j,t;
+            
     if (n > 1) 
-	{
+    {
         for (i = n - 1; i > 0; i--) {
             j = (long int) (drand48()*(i+1));
             t = array[j];
@@ -379,353 +438,343 @@ void shuffle(long int *array, long int n) {
 
 // Load occupancy matrix from file
 int LoadOccupancyFromFile(const char* filename){
-	FILE *f;
-	int i, j;
-	int value;
-	
-	f = fopen(filename, "r");
-	if(f == NULL)
-	{
-		fprintf(stderr, "Error: Could not open initial occupancy file '%s'\n", filename);
-		return 0;
-	}
-	
-	// Read the occupancy matrix
-	for(j = 0; j < Ly; j++)
-	{
-		for(i = 0; i < Lx; i++)
-		{
-			if(fscanf(f, "%d", &value) != 1)
-			{
-				fprintf(stderr, "Error: Could not read occupancy value at position (%d,%d)\n", i, j);
-				fclose(f);
-				return 0;
-			}
-			Occupancy[i][j] = (char)value;
-		}
-	}
-	
-	fclose(f);
-	return 1; // Success
+    FILE *f;
+    int i, j;
+    int value;
+    
+    f = fopen(filename, "r");
+    if(f == NULL)
+    {
+        fprintf(stderr, "Error: Could not open initial occupancy file '%s'\n", filename);
+        return 0;
+    }
+    
+    // Read the occupancy matrix
+    for(j = 0; j < Ly; j++)
+    {
+        for(i = 0; i < Lx; i++)
+        {
+            if(fscanf(f, "%d", &value) != 1)
+            {
+                fprintf(stderr, "Error: Could not read occupancy value at position (%d,%d)\n", i, j);
+                fclose(f);
+                return 0;
+            }
+            Occupancy[i][j] = (char)value;
+        }
+    }
+    
+    fclose(f);
+    return 1; // Success
 }
 
 // Reconstruct particle positions from occupancy matrix
 void ReconstructParticlesFromOccupancy(void){
-	int i, j, k;
-	long int n = 0;
-	int d;
-	
-	// Count total particles and place them
-	for(i = 0; i < Lx; i++)
-	{
-		for(j = 0; j < Ly; j++)
-		{
-			// For each particle at this site
-			for(k = 0; k < Occupancy[i][j] && n < MaxNPart; k++)
-			{
-				if(n >= NParticles)
-				{
-					fprintf(stderr, "Warning: More particles in file than expected (%ld)\n", NParticles);
-					return;
-				}
-				
-				PosX[n] = i;
-				PosY[n] = j;
-				
-				// Assign a random director
-				d = (int)(drand48() * NDirectors);
-				DirectorX[n] = UnitX[d];
-				DirectorY[n] = UnitY[d];
-				
-				n++;
-			}
-		}
-	}
-	
-	// Update actual number of particles found
-	NParticles = n;
-	fprintf(stderr, "Reconstructed %ld particles from occupancy matrix\n", NParticles);
+    int i, j, k;
+    long int n = 0;
+    int d;
+    
+    // Count total particles and place them
+    for(i = 0; i < Lx; i++)
+    {
+        for(j = 0; j < Ly; j++)
+        {
+            // For each particle at this site
+            for(k = 0; k < Occupancy[i][j] && n < MaxNPart; k++)
+            {
+                if(n >= NParticles)
+                {
+                    fprintf(stderr, "Warning: More particles in file than expected (%ld)\n", NParticles);
+                    return;
+                }
+                
+                PosX[n] = i;
+                PosY[n] = j;
+                
+                // Assign a random director
+                d = (int)(drand48() * NDirectors);
+                DirectorX[n] = UnitX[d];
+                DirectorY[n] = UnitY[d];
+                
+                n++;
+            }
+        }
+    }
+    
+    // Update actual number of particles found
+    NParticles = n;
+    fprintf(stderr, "Reconstructed %ld particles from occupancy matrix\n", NParticles);
 }
 
 void InitialCondition(long int seed){
-	int i,j;
-	int d;
-	long int n;
-	
-	// Random seed
-	srand48(seed);
-	
-	// Check if we should load from file
-	if(strlen(InitialFile) > 0)
-	{
-		fprintf(stderr, "Loading initial condition from file: %s\n", InitialFile);
-		
-		// Clear the occupancy matrix first
-		for(i = 0; i < Lx; i++)
-			for(j = 0; j < Ly; j++)
-			{
-				Occupancy[i][j] = 0;	
+    int i,j;
+    int d;
+    long int n;
+    
+    // Random seed
+    srand48(seed);
+    
+    // Check if we should load from file
+    if(strlen(InitialFile) > 0)
+    {
+        fprintf(stderr, "Loading initial condition from file: %s\n", InitialFile);
+        
+        // Clear the occupancy matrix first
+        for(i = 0; i < Lx; i++)
+            for(j = 0; j < Ly; j++)
+            {
+                Occupancy[i][j] = 0;	
                 CalculatedDensity[i] = 0; // Initialize density array
-				XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
-			}
-		
-		// Load occupancy from file
-		if(!LoadOccupancyFromFile(InitialFile))
-		{
-			fprintf(stderr, "Error loading initial condition, using random initialization instead\n");
-			goto random_init;
-		}
-		
-		// Reconstruct particle positions
-		ReconstructParticlesFromOccupancy();
-	}
-	else
-	{
-		random_init:
-		fprintf(stderr, "Using random initial condition\n");
-		
-		// Clear the occupancy matrix
-		for(i=0;i<Lx;i++)
-			for(j=0;j<Ly;j++)
-			{
-				Occupancy[i][j]=0;
+                XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
+            }
+        
+        // Load occupancy from file
+        if(!LoadOccupancyFromFile(InitialFile))
+        {
+            fprintf(stderr, "Error loading initial condition, using random initialization instead\n");
+            goto random_init;
+        }
+        
+        // Reconstruct particle positions
+        ReconstructParticlesFromOccupancy();
+    }
+    else
+    {
+        random_init:
+        fprintf(stderr, "Using random initial condition\n");
+        
+        // Clear the occupancy matrix
+        for(i=0;i<Lx;i++)
+            for(j=0;j<Ly;j++)
+            {
+                Occupancy[i][j]=0;
                 CalculatedDensity[i] = 0; // Initialize density array
-				XAccumulatedFlux[i][j]=0; // Initialize flux matrix
-			}
-		
-	#if (WALL==1)
-		// If there is a wall, put these sites as already fully occupied. We use nmax+1 to distinguish to a dynamical site
-		for(j=0;j<Ly;j++)
-			Occupancy[0][j]=nmax+1;
+                XAccumulatedFlux[i][j]=0; // Initialize flux matrix
+            }
+        
+    #if (WALL==1)
+        // If there is a wall, put these sites as already fully occupied. We use nmax+1 to distinguish to a dynamical site
+        for(j=0;j<Ly;j++)
+            Occupancy[0][j]=nmax+1;
             CalculatedDensity[0] = nmax+1; // Set density for wall
 
-	#endif
-		
-		// Loop over all the particles
-		for(n=0;n<NParticles;n++)
-		{
-			// Find a random site that is not full
-			do{
-				i=(int)(drand48()*Lx);
-				j=(int)(drand48()*Ly);
-			}while(Occupancy[i][j]>=nmax);
-			// Place the particle
-			PosX[n]=i;
-			PosY[n]=j;
-			Occupancy[i][j]++;
+    #endif
+        
+        // Loop over all the particles
+        for(n=0;n<NParticles;n++)
+        {
+            // Find a random site that is not full
+            int attempts = 0;
+            do{
+                i=(int)(drand48()*Lx);
+                j=(int)(drand48()*Ly);
+                attempts++;
+                if (attempts > Lx*Ly*10) {
+                    fprintf(stderr, "[ERROR] Could not place particle %ld after %d attempts. Density too high for nmax=%d.\n", n, attempts, nmax);
+                    exit(1);
+                }
+            }while(Occupancy[i][j]>=nmax);
+            // Place the particle
+            PosX[n]=i;
+            PosY[n]=j;
+            Occupancy[i][j]++;
             CalculatedDensity[i]++; // Update density for this site
-			
-			// Asign a random director
-			d=(int)(drand48()*NDirectors);
-			DirectorX[n]=UnitX[d];
-			DirectorY[n]=UnitY[d];
-		}
-	}
-	
-	// Set the initial particle order, simple Order[n]=n
-	// Later it will be changed
-	for(n=0;n<NParticles;n++)
-		ParticleOrder[n]=n;
+            // Asign a random director
+            d=(int)(drand48()*NDirectors);
+            DirectorX[n]=UnitX[d];
+            DirectorY[n]=UnitY[d];
+        }
+    }
+    
+    // Set the initial particle order, simple Order[n]=n
+    // Later it will be changed
+    for(n=0;n<NParticles;n++)
+        ParticleOrder[n]=n;
 }
 
 // Perform one simulation cicle - OPTIMIZED VERSION
 void Iterate(long int step){
-	long int n;
-	
-	// Initialize counter for moving particles this step
-	long int moving_particles_this_step = 0;
-	
-	// Change the order over which the particles are updated
-	shuffle(ParticleOrder,NParticles);
-
-	// Pre-generate random numbers for better performance
-	// Generate all random numbers we might need at once
-	static double *rand_buffer = NULL;
-	static long int rand_buffer_size = 0;
-	
-	// Allocate or resize random buffer if needed
-	long int needed_randoms = NParticles * 3; // max 3 randoms per particle
-	if (rand_buffer == NULL || rand_buffer_size < needed_randoms) {
-		if (rand_buffer) free(rand_buffer);
-		rand_buffer_size = needed_randoms * 2; // allocate extra for growth
-		rand_buffer = (double*)malloc(rand_buffer_size * sizeof(double));
-	}
-	
-	// Generate all random numbers at once (more efficient than individual calls)
-	for (long int i = 0; i < needed_randoms; i++) {
-		rand_buffer[i] = drand48();
-	}
-	long int rand_idx = 0;
-
-	// Run over all the particles
-	// Independent X and Y movement
-	for(n=0;n<NParticles;n++)
-	{
-		long int particle_id = ParticleOrder[n];
-		int icurrent = PosX[particle_id];
-		int jcurrent = PosY[particle_id];
-		
-		// Cache director values to avoid repeated array access
-		int dir_x = DirectorX[particle_id];
-		int dir_y = DirectorY[particle_id];
-		
-		// Try X movement first
-		if (dir_x != 0) {
-			int inew = (icurrent + dir_x + Lx) % Lx;
-			if (Occupancy[inew][jcurrent] < nmax) {
-				// Inline probability calculation for better performance
-				double prob_x;
-				if (PotentialTypeCode == 0) { // default
-					prob_x = 1.0;
-				} else if (PotentialTypeCode == 2 && dir_y != 0) { // director-based-sin with y-direction
-					prob_x = 0.5; // Director pointing in ±y direction
-				} else {
-					// Use pre-calculated map
-					if (!MoveProbMapInitialized) {
-						InitializeMoveProbMap();
-					}
-					prob_x = MoveProbMap[inew][jcurrent];
-				}
-				
-				if (rand_buffer[rand_idx++] < prob_x) {
-					Occupancy[icurrent][jcurrent]--;
+    long int n;
+    long int moving_particles_this_step = 0;
+    shuffle(ParticleOrder,NParticles);
+    static double *rand_buffer = NULL;
+    static long int rand_buffer_size = 0;
+    long int needed_randoms = NParticles * 3;
+    if (rand_buffer == NULL || rand_buffer_size < needed_randoms) {
+        if (rand_buffer) free(rand_buffer);
+        rand_buffer_size = needed_randoms * 2;
+        rand_buffer = (double*)malloc(rand_buffer_size * sizeof(double));
+    }
+    for (long int i = 0; i < needed_randoms; i++) {
+        rand_buffer[i] = drand48();
+    }
+    long int rand_idx = 0;
+    for(n=0;n<NParticles;n++)
+    {
+        long int particle_id = ParticleOrder[n];
+        int icurrent = PosX[particle_id];
+        int jcurrent = PosY[particle_id];
+        int dir_x = DirectorX[particle_id];
+        int dir_y = DirectorY[particle_id];
+        // Check bounds before array access
+        if (icurrent < 0 || icurrent >= Lx || jcurrent < 0 || jcurrent >= Ly) {
+            fprintf(stderr, "[ERROR] Particle %ld out of bounds: x=%d, y=%d\n", n, icurrent, jcurrent);
+            exit(1);
+        }
+       
+        // Try X movement first
+        if (dir_x != 0) {
+            int inew = (icurrent + dir_x + Lx) % Lx;
+            if (Occupancy[inew][jcurrent] < nmax) {
+                double prob_x;
+                if (PotentialTypeCode == 0) {
+                    prob_x = 1.0;
+                } else if (PotentialTypeCode == 2 && dir_y != 0) {
+                    prob_x = 0.5;
+                } else {
+                    if (!MoveProbMapInitialized) {
+                        InitializeMoveProbMap();
+                    }
+                    prob_x = MoveProbMap[inew][jcurrent];
+                }
+                
+                if (rand_buffer[rand_idx++] < prob_x) {
+                    Occupancy[icurrent][jcurrent]--;
                     CalculatedDensity[icurrent]--; // Decrease density for old site
-					icurrent = inew;
-					Occupancy[icurrent][jcurrent]++;
+                    icurrent = inew;
+                    Occupancy[icurrent][jcurrent]++;
                     CalculatedDensity[icurrent]++; // Increase density for new site
-					PosX[particle_id] = icurrent;
-					moving_particles_this_step++; // Increment counter for moving particles
-					XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
-				}
-			} else {
-				rand_idx++; // Skip the random number we would have used
-			}
-		}
-		
-		// Try Y movement second (independent of X movement result)
-		if (dir_y != 0) {
-			int jnew = (jcurrent + dir_y + Ly) % Ly;
-			if (Occupancy[icurrent][jnew] < nmax) {
-				// Inline probability calculation for better performance
-				double prob_y;
-				if (PotentialTypeCode == 0) { // default
-					prob_y = 1.0;
-				} else if (PotentialTypeCode == 2 && dir_x != 0) { // director-based-sin with x-direction
-					prob_y = 0.5; // Director pointing in ±x direction  
-				} else {
-					// Use pre-calculated map
-					if (!MoveProbMapInitialized) {
-						InitializeMoveProbMap();
-					}
-					prob_y = MoveProbMap[icurrent][jnew];
-				}
-				
-				if (rand_buffer[rand_idx++] < prob_y) {
-					Occupancy[icurrent][jcurrent]--;
-                    CalculatedDensity[icurrent]--; // Decrease density for old site
-					jcurrent = jnew;
-					Occupancy[icurrent][jcurrent]++;
-                    CalculatedDensity[icurrent]++; // Increase density for new site
-					PosY[particle_id] = jcurrent;
-					moving_particles_this_step++; // Increment counter for moving particles
+                    PosX[particle_id] = icurrent;
+                    moving_particles_this_step++; // Increment counter for moving particles
                     XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
-				}
-			} else {
-				rand_idx++; // Skip the random number we would have used
-			}
-		}	
+                }
+            } else {
+                rand_idx++; // Skip the random number we would have used
+            }
+        }
+        
+        // Try Y movement second (independent of X movement result)
+        if (dir_y != 0) {
+            int jnew = (jcurrent + dir_y + Ly) % Ly;
+            if (Occupancy[icurrent][jnew] < nmax) {
+                double prob_y;
+                if (PotentialTypeCode == 0) {
+                    prob_y = 1.0;
+                } else if (PotentialTypeCode == 2 && dir_x != 0) {
+                    prob_y = 0.5;
+                } else {
+                    if (!MoveProbMapInitialized) {
+                        InitializeMoveProbMap();
+                    }
+                    prob_y = MoveProbMap[icurrent][jnew];
+                }
+                
+                if (rand_buffer[rand_idx++] < prob_y) {
+                    Occupancy[icurrent][jcurrent]--;
+                    CalculatedDensity[icurrent]--; // Decrease density for old site
+                    jcurrent = jnew;
+                    Occupancy[icurrent][jcurrent]++;
+                    CalculatedDensity[icurrent]++; // Increase density for new site
+                    PosY[particle_id] = jcurrent;
+                    moving_particles_this_step++; // Increment counter for moving particles
+                    XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
+                }
+            } else {
+                rand_idx++; // Skip the random number we would have used
+            }
+        }	
 
-		// Do tumble with probability TumbRate
-		if(rand_buffer[rand_idx++] < TumbRate)
-		{
-			int d = (int)(rand_buffer[rand_idx++] * NDirectors);
-			DirectorX[particle_id] = UnitX[d];
-			DirectorY[particle_id] = UnitY[d];
-		}
-	}
-	
-	// Store movement count if tracking is enabled
-	
-	// Store movement count if tracking is enabled 
-	if (TrackMovement && MovingParticlesCount != NULL && SaveInterval > 0) {
-		// Record step 1, then every SaveInterval steps (SaveInterval, 2*SaveInterval, etc.)
-		if (step == 1 || step % SaveInterval == 0) {
-			long int track_index;
-			if (step == 1) {
-				track_index = 0; // First entry is step 1
-			} else {
-				track_index = step / SaveInterval; // Subsequent entries
-			}
-			
-			if (track_index >= 0 && track_index < MovingParticlesSize) {
-				MovingParticlesCount[track_index] = moving_particles_this_step;
-				MovingParticlesSteps[track_index] = step;
-			}
-		}
-	}
-	
-	// Print movement statistics periodically
-	if (step % 3000 == 0) {
-		fprintf(stderr, "Step %ld\n", step);
-	}
+        // Do tumble with probability TumbRate
+        if(rand_buffer[rand_idx++] < TumbRate)
+        {
+            int d = (int)(rand_buffer[rand_idx++] * NDirectors);
+            DirectorX[particle_id] = UnitX[d];
+            DirectorY[particle_id] = UnitY[d];
+        }
+    }
+    
+    // Store movement count if tracking is enabled
+    
+    // Store movement count if tracking is enabled 
+    if (TrackMovement && MovingParticlesCount != NULL && SaveInterval > 0) {
+        // Record step 1, then every SaveInterval steps (SaveInterval, 2*SaveInterval, etc.)
+        if (step == 1 || step % SaveInterval == 0) {
+            long int track_index;
+            if (step == 1) {
+                track_index = 0; // First entry is step 1
+            } else {
+                track_index = step / SaveInterval; // Subsequent entries
+            }
+            
+            if (track_index >= 0 && track_index < MovingParticlesSize) {
+                MovingParticlesCount[track_index] = moving_particles_this_step;
+                MovingParticlesSteps[track_index] = step;
+            }
+        }
+    }
+    
+    // Print movement statistics periodically
+    if (step % 3000 == 0) {
+        fprintf(stderr, "Step %ld\n", step);
+    }
 }
 
 void WriteConfig(long int index, bool track_occupancy, bool track_density, bool track_flux)
 {
-	FILE *f;
-	char filename[250];
-	int i,j;
-	long int n;
+    FILE *f;
+    char filename[250];
+    int i,j;
+    long int n;
 
-	// Write the occupancy matrix
-	if (track_occupancy) {
-		sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
-		f=fopen(filename,"w");
-		for(j=0;j<Ly;j++) {
-			for(i=0;i<Lx;i++)
-				fprintf(f,"%d ",Occupancy[i][j]);
-			fprintf(f,"\n");
-		}
-		fclose(f);
-	}
+    // Write the occupancy matrix
+    if (track_occupancy) {
+        sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
+        f=fopen(filename,"w");
+        for(j=0;j<Ly;j++) {
+            for(i=0;i<Lx;i++)
+                fprintf(f,"%d ",Occupancy[i][j]);
+            fprintf(f,"\n");
+        }
+        fclose(f);
+    }
     
     // Write density
-	if (track_density) {
-		// Write the X movement flux matrix (raw accumulated values)
-		sprintf(filename,"%s/Density_%ld.dat",RunName,index);
-		f=fopen(filename,"w");
-		for(i=0;i<Lx;i++)
-		{  
+    if (track_density) {
+        // Write the X movement flux matrix (raw accumulated values)
+        sprintf(filename,"%s/Density_%ld.dat",RunName,index);
+        f=fopen(filename,"w");
+        for(i=0;i<Lx;i++)
+        {  
             fprintf(f,"%.3f ", (double)CalculatedDensity[i] / Ly);
-		}
-		fclose(f);
-	}
-	
+        }
+        fclose(f);
+    }
+    
 
-	// Write MovingParticles
-	if (track_flux) {
-		// Write the X movement flux matrix (raw accumulated values)
-		sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
-		f=fopen(filename,"w");
-		for(j=0;j<Ly;j++)
-		{
-			for(i=0;i<Lx;i++)
-			{
-				fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
-			}
-			fprintf(f,"\n");
-		}
-		fclose(f);
-	}
-	
-	// Write the particle coordinates and directors
-	if (index == -1 || index == 0) {
-		sprintf(filename,"%s/Config_%ld.dat",RunName,index);
-		f=fopen(filename,"w");
-		for(n=0;n<NParticles;n++)
-			fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
-		fclose(f);
-	}
+    // Write MovingParticles
+    if (track_flux) {
+        // Write the X movement flux matrix (raw accumulated values)
+        sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
+        f=fopen(filename,"w");
+        for(j=0;j<Ly;j++)
+        {
+            for(i=0;i<Lx;i++)
+            {
+                fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
+            }
+            fprintf(f,"\n");
+        }
+        fclose(f);
+    }
+    
+    // Write the particle coordinates and directors
+    if (index == -1 || index == 0) {
+        sprintf(filename,"%s/Config_%ld.dat",RunName,index);
+        f=fopen(filename,"w");
+        for(n=0;n<NParticles;n++)
+            fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
+        fclose(f);
+    }
 }
 
 // Structure to hold all parameters
@@ -779,11 +828,11 @@ void ShowUsage(const char* program_name) {
     
     fprintf(stderr, "Optional parameters:\n");
     fprintf(stderr, "  --initial-file FILE         Initial occupancy file (default: random)\n");
-    fprintf(stderr, "  --potential TYPE            Potential type: default, uneven-sin, director-based-sin\n");
+    fprintf(stderr, "  --potential TYPE            Potential type: default, uneven-sin, director-uneven-sin\n");
     fprintf(stderr, "  --save-interval N           Save every N steps (default: 1/tumble_rate)\n");
     fprintf(stderr, "  --track-movement            Enable movement tracking as Observable\n");
     fprintf(stderr, "  --gamma VALUE               Gamma parameter for sin potentials (default: -0.5)\n");
-    fprintf(stderr, "  --g VALUE                   G parameter for director-based-sin (default: 0.3)\n");
+    fprintf(stderr, "  --g VALUE                   G parameter for director-uneven-sin (default: 0.3)\n");
     fprintf(stderr, "  --track-occupancy           Track occupancy matrices (default: enabled)\n");
     fprintf(stderr, "  --track-density             Track density calculations\n");
     fprintf(stderr, "  --track-flux                Track movement flux matrices\n");
@@ -792,15 +841,19 @@ void ShowUsage(const char* program_name) {
     
     fprintf(stderr, "Examples:\n");
     fprintf(stderr, "  %s --density 0.5 --tumble-rate 0.1 --total-time 10000 --run-name test\n", program_name);
-    fprintf(stderr, "  %s --density 0.7 --tumble-rate 0.05 --total-time 5000 --run-name exp1 --potential director-based-sin --gamma -0.3 --g 0.5 --track-flux\n", program_name);
+    fprintf(stderr, "  %s --density 0.7 --tumble-rate 0.05 --total-time 5000 --run-name exp1 --potential director-uneven-sin --gamma -0.3 --g 0.5 --track-flux\n", program_name);
 }
 
 // Parse command line arguments
 int ParseArguments(int argc, char **argv, SimulationParams *params) {
+    fprintf(stderr, " Step 0.2: Parsing command line arguments...\n");
     InitializeDefaultParams(params);
-    
+    fprintf(stderr, " Step 0.3: Default parameters initialized.\n");
+
     bool density_set = false, tumble_set = false, time_set = false, name_set = false;
     
+    fprintf(stderr, " Step 0.4: Checking command line arguments...\n");
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             ShowUsage(argv[0]);
@@ -813,6 +866,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->density = atof(argv[++i]);
             density_set = true;
+            fprintf(stderr, "Step 0.5: Parsed option '--density' with value '%f'\n", params->density);
         }
         else if (strcmp(argv[i], "--tumble-rate") == 0) {
             if (i + 1 >= argc) {
@@ -821,6 +875,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->tumb_rate = atof(argv[++i]);
             tumble_set = true;
+            fprintf(stderr, "Step 0.5: Parsed option '--tumble-rate' with value '%f'\n", params->tumb_rate);
         }
         else if (strcmp(argv[i], "--total-time") == 0) {
             if (i + 1 >= argc) {
@@ -829,28 +884,38 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->total_time = atol(argv[++i]);
             time_set = true;
+            fprintf(stderr, "Step 0.5: Parsed option '--total-time' with value '%ld'\n", params->total_time);
         }
         else if (strcmp(argv[i], "--run-name") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --run-name requires a value\n");
                 return -1;
             }
-            strcpy(params->run_name, argv[++i]);
+            strncpy(params->run_name, argv[++i], sizeof(params->run_name) - 1);
+            params->run_name[sizeof(params->run_name) - 1] = '\0';
+            fprintf(stderr, "[DEBUG] --run-name input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->run_name));
             name_set = true;
+            fprintf(stderr, "Step 0.5: Parsed option '--run-name' with value '%s'\n", params->run_name);
         }
         else if (strcmp(argv[i], "--initial-file") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --initial-file requires a value\n");
                 return -1;
             }
-            strcpy(params->initial_file, argv[++i]);
+            strncpy(params->initial_file, argv[++i], sizeof(params->initial_file) - 1);
+            params->initial_file[sizeof(params->initial_file) - 1] = '\0';
+            fprintf(stderr, "[DEBUG] --initial-file input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->initial_file));
+            fprintf(stderr, "Step 0.5: Parsed option '--initial-file' with value '%s'\n", params->initial_file);
         }
         else if (strcmp(argv[i], "--potential") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --potential requires a value\n");
                 return -1;
             }
-            strcpy(params->potential_type, argv[++i]);
+            strncpy(params->potential_type, argv[++i], sizeof(params->potential_type) - 1);
+            params->potential_type[sizeof(params->potential_type) - 1] = '\0';
+            fprintf(stderr, "[DEBUG] --potential input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->potential_type));
+            fprintf(stderr, "Step 0.5: Parsed option '--potential' with value '%s'\n", params->potential_type);
         }
         else if (strcmp(argv[i], "--save-interval") == 0) {
             if (i + 1 >= argc) {
@@ -858,9 +923,11 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->save_interval = atol(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--save-interval' with value '%ld'\n", params->save_interval);
         }
         else if (strcmp(argv[i], "--track-movement") == 0) {
             params->track_movement = 1;
+            fprintf(stderr, "Step 0.5: Parsed flag '--track-movement'\n");
         }
         else if (strcmp(argv[i], "--gamma") == 0) {
             if (i + 1 >= argc) {
@@ -868,6 +935,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->gamma = atof(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--gamma' with value '%f'\n", params->gamma);
         }
         else if (strcmp(argv[i], "--g") == 0) {
             if (i + 1 >= argc) {
@@ -875,6 +943,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->g = atof(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--g' with value '%f'\n", params->g);
         }
         else if (strcmp(argv[i], "--potential-lower") == 0) {
             if (i + 1 >= argc) {
@@ -882,6 +951,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->potential_lower = atof(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--potential-lower' with value '%f'\n", params->potential_lower);
         }
         else if (strcmp(argv[i], "--potential-upper") == 0) {
             if (i + 1 >= argc) {
@@ -889,15 +959,19 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->potential_upper = atof(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--potential-upper' with value '%f'\n", params->potential_upper);
         }
         else if (strcmp(argv[i], "--track-occupancy") == 0) {
             params->track_occupancy = true;
+            fprintf(stderr, "Step 0.5: Parsed flag '--track-occupancy'\n");
         }
         else if (strcmp(argv[i], "--track-density") == 0) {
             params->track_density = true;
+            fprintf(stderr, "Step 0.5: Parsed flag '--track-density'\n");
         }
         else if (strcmp(argv[i], "--track-flux") == 0) {
             params->track_flux = true;
+            fprintf(stderr, "Step 0.5: Parsed flag '--track-flux'\n");
         }
         else if (strcmp(argv[i], "--seed") == 0) {
             if (i + 1 >= argc) {
@@ -905,6 +979,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->seed = atol(argv[++i]);
+            fprintf(stderr, "Step 0.5: Parsed option '--seed' with value '%ld'\n", params->seed);
         }
         // ============ ADD NEW PARAMETERS HERE ============
         // To add a new parameter:
@@ -925,110 +1000,130 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             return -1;
         }
     }
+    fprintf(stderr, "Step 0.51: Finished parsing command line arguments.\n");
     
     // Check required parameters
     if (!density_set || !tumble_set || !time_set || !name_set) {
+        fprintf(stderr, "Step 0.55: Missing required parameters.\n");
         fprintf(stderr, "Error: Missing required parameters.\n");
         fprintf(stderr, "Required: --density, --tumble-rate, --total-time, --run-name\n");
         fprintf(stderr, "Use --help for full usage information\n");
         return -1;
     }
     
+    fprintf(stderr, "Step 0.6: All required parameters set.\n");
+
     // Set default save interval if not specified
     if (params->save_interval == 0) {
         params->save_interval = (long int)(1.0 / params->tumb_rate);
         if (params->save_interval < 1) params->save_interval = 1;
         fprintf(stderr, "SaveInterval not specified, using 1/TumbRate = %ld\n", params->save_interval);
     }
+
+    fprintf(stderr, "Step 0.7: All parameters parsed successfully.\n");
     
     return 1; // Success
 }
-	
+    
 int main(int argc, char **argv)
 {
-	long int step;
-	SimulationParams params;
-	
-	// Parse command line arguments
-	int parse_result = ParseArguments(argc, argv, &params);
-	if (parse_result <= 0) {
-		return (parse_result == 0) ? 0 : 1; // 0 for help, 1 for error
-	}
-	
-	// Copy parameters to global variables (for compatibility with existing code)
-	Density = params.density;
-	TumbRate = params.tumb_rate;
-	TotalTime = params.total_time;
-	strcpy(RunName, params.run_name);
-	strcpy(InitialFile, params.initial_file);
-	strcpy(PotentialType, params.potential_type);
-	SaveInterval = params.save_interval;
-	TrackMovement = params.track_movement;
-	Gamma = params.gamma;
-	G = params.g;
+    fprintf(stderr, "Step 0: Starting simulation with %d arguments\n", argc);
+    long int step;
+    SimulationParams params;
+
+    fprintf(stderr, "Step 0.1: Initializing parameters\n");
+    
+    // Parse command line arguments
+    int parse_result = ParseArguments(argc, argv, &params);
+    if (parse_result <= 0) {
+        return (parse_result == 0) ? 0 : 1; // 0 for help, 1 for error
+    }
+
+    fprintf(stderr, "Step 0.5: after parse arg\n");
+    
+    // Copy parameters to global variables (for compatibility with existing code)
+    Density = params.density;
+    TumbRate = params.tumb_rate;
+    TotalTime = params.total_time;
+    strcpy(RunName, params.run_name);
+    strcpy(InitialFile, params.initial_file);
+    strcpy(PotentialType, params.potential_type);
+    SaveInterval = params.save_interval;
+    TrackMovement = params.track_movement;
+    Gamma = params.gamma;
+    G = params.g;
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
-	
-	// Initialize the simulation (pass seed from params)
-	InitialCondition(params.seed);
-	
-	// Set the potential function
-	SetPotentialFunction(PotentialType);
-	
-	// Create the output directory
-	if(mkdir(RunName, 0755) != 0 && errno != EEXIST)
-	{
-		fprintf(stderr,"Error: Could not create directory '%s'\n", RunName);
-		return 1;
-	}
-	
-	// Compute the number of particles (may be overridden if loading from file)
-	NParticles=(int)(Density*Lx*Ly);
-	fprintf(stderr,"Run name: %s\n", RunName);
-	fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",
-	Density,NParticles,TumbRate,TotalTime);
-	fprintf(stderr,"Movement probability type: %s, Gamma: %.3f, G: %.3f, Save interval: %ld\n", 
-	PotentialType, Gamma, G, SaveInterval);
-	fprintf(stderr,"Movement tracking: %s%s\n", 
-	TrackMovement ? "enabled" : "disabled",
-	(TrackMovement && SaveInterval > 0) ? "" : (TrackMovement ? " (but SaveInterval=0, so disabled)" : ""));
-	fprintf(stderr,"Output options: Occupancy=%s, Density=%s, Flux=%s\n",
-	params.track_occupancy ? "enabled" : "disabled",
-	params.track_density ? "enabled" : "disabled", 
-	params.track_flux ? "enabled" : "disabled");
-		
-	// Initialize the simulation
-	InitialCondition(params.seed);
-	
-	// Initialize movement tracking
-	InitializeMovementTracking(TotalTime);
-	
-	// Print actual density after initialization
-	fprintf(stderr,"Actual Parameters: NParticles %ld, Density %lf\n",
-	NParticles,(1.0*NParticles)/(Lx*Ly));
-	
-	WriteConfig(-1, params.track_occupancy, params.track_density, params.track_flux);
-	
-	//Loop
-	for(step=1;step<=TotalTime;step++)
-	{
-		if(step%3000==0)
-			fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
-		Iterate(step);
-		
-		// Save intermediate steps if save interval is specified
-		if(SaveInterval > 0 && step % SaveInterval == 0) {
+    
+    fprintf(stderr, "Step 1 complete: Parameters parsed successfully.\n");
+    // Initialize the simulation (pass seed from params)
+    InitialCondition(params.seed);
+    
+    fprintf(stderr, "Step 2 complete: Initial condition set.\n");
 
-			WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
-		}
-	}
-	WriteConfig(TotalTime, params.track_occupancy, params.track_density, params.track_flux);
-	
-	// Write movement statistics before cleanup
-	WriteMovementStats();
-	
-	// Cleanup movement tracking if allocated
-	CleanupMovementTracking();
+    // Set the potential function
+    SetPotentialFunction(PotentialType);
+    fprintf(stderr, "[DEBUG] After SetPotentialFunction: PotentialType='%s', PotentialTypeCode=%d, G=%.6f\n", PotentialType, PotentialTypeCode, G);
+    
+    // Create the output directory
+    if(mkdir(RunName, 0755) != 0 && errno != EEXIST)
+    {
+        fprintf(stderr,"Error: Could not create directory '%s'\n", RunName);
+        return 1;
+    }
+    
+    // Compute the number of particles (may be overridden if loading from file)
+    NParticles=(int)(Density*Lx*Ly);
+    if (NParticles > MaxNPart) {
+        fprintf(stderr, "[ERROR] NParticles (%ld) exceeds MaxNPart (%d). Reduce density or increase nmax/Lx/Ly.\n", NParticles, MaxNPart);
+        return 1;
+    }
+    
+    fprintf(stderr,"Run name: %s\n", RunName);
+    fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",
+    Density,NParticles,TumbRate,TotalTime);
+    fprintf(stderr,"Movement probability type: %s, Gamma: %.3f, G: %.3f, Save interval: %ld\n", 
+    PotentialType, Gamma, G, SaveInterval);
+    fprintf(stderr,"Movement tracking: %s%s\n", 
+    TrackMovement ? "enabled" : "disabled",
+    (TrackMovement && SaveInterval > 0) ? "" : (TrackMovement ? " (but SaveInterval=0, so disabled)" : ""));
+    fprintf(stderr,"Output options: Occupancy=%s, Density=%s, Flux=%s\n",
+    params.track_occupancy ? "enabled" : "disabled",
+    params.track_density ? "enabled" : "disabled", 
+    params.track_flux ? "enabled" : "disabled");
+        
+    // Initialize the simulation
+    InitialCondition(params.seed);
+    
+    // Initialize movement tracking
+    InitializeMovementTracking(TotalTime);
+    
+    // Print actual density after initialization
+    fprintf(stderr,"Actual Parameters: NParticles %ld, Density %lf\n",
+    NParticles,(1.0*NParticles)/(Lx*Ly));
+    
+    WriteConfig(-1, params.track_occupancy, params.track_density, params.track_flux);
+    
+    //Loop
+    for(step=1;step<=TotalTime;step++)
+    {
+        if(step%3000==0)
+            fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
+        Iterate(step);
+        
+        // Save intermediate steps if save interval is specified
+        if(SaveInterval > 0 && step % SaveInterval == 0) {
 
-	return 0;
+            WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
+        }
+    }
+    WriteConfig(TotalTime, params.track_occupancy, params.track_density, params.track_flux);
+    
+    // Write movement statistics before cleanup
+    WriteMovementStats();
+    
+    // Cleanup movement tracking if allocated
+    CleanupMovementTracking();
+
+    return 0;
 }

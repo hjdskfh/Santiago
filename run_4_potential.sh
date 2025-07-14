@@ -27,7 +27,7 @@ parse_arguments() {
                 ;;
             --move-prob)
                 if [ -z "$2" ] || [[ "$2" == --* ]]; then
-                    echo "Error: --move-prob requires a value (default, uneven-sin, director-based-sin)"
+                    echo "Error: --move-prob requires a value (default, uneven-sin, director-uneven-sin)"
                     exit 1
                 fi
                 MOVE_PROB="$2"
@@ -86,7 +86,7 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  --output-dir DIR           Use custom output directory instead of 'runs'"
-    echo "  --move-prob TYPE           Specify movement probability type (default, uneven-sin, director-based-sin)"
+    echo "  --move-prob TYPE           Specify movement probability type (default, uneven-sin, director-uneven-sin)"
     echo "  --start-config             Create start configuration"
     echo "  --save-interval N|auto     Save every N steps or 'auto' for 1/tumble_rate (default: auto)"
     echo "  --track-movement           Enable movement tracking at save intervals"
@@ -245,7 +245,7 @@ start_tumble_rate=0.005
 # Just make sure the C program accepts the --parameter-name format
 
 gamma=-0.5              # Gamma parameter for sin potentials
-g=1                     # G parameter for director-based-sin potential
+g=1                     # G parameter for director-uneven-sin potential > 0 !
 potential_lower=0.2    # Lower bound for potential
 potential_upper=0.8     # Upper bound for potential
 seed=837437             # Random seed (example of new parameter)
@@ -349,10 +349,10 @@ echo "  - Save interval: $SAVE_INTERVAL"
 echo "  - Movement tracking: $TRACK_MOVEMENT"
 echo "  - Flux tracking: $TRACK_FLUX"
 echo "  - Density tracking: $TRACK_DENSITY"
-if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
+if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-uneven-sin" ] || [ "$MOVE_PROB" = "director-symmetric-sin" ]; then
     echo "  - Gamma parameter: $gamma"
 fi
-if [ "$MOVE_PROB" = "director-based-sin" ]; then
+if [ "$MOVE_PROB" = "director-uneven-sin" ] || [ "$MOVE_PROB" = "director-symmetric-sin" ]; then
     echo "  - G parameter: $g"
 fi
 
@@ -367,10 +367,10 @@ echo "#   - Save interval: $SAVE_INTERVAL" >> "$MASTER_LOG"
 echo "#   - Movement tracking: $TRACK_MOVEMENT" >> "$MASTER_LOG"
 echo "#   - Flux tracking: $TRACK_FLUX" >> "$MASTER_LOG"
 echo "#   - Density tracking: $TRACK_DENSITY" >> "$MASTER_LOG"
-if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-based-sin" ]; then
+if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-uneven-sin" ]; then
     echo "#   - Gamma parameter: $gamma" >> "$MASTER_LOG"
 fi
-if [ "$MOVE_PROB" = "director-based-sin" ]; then
+if [ "$MOVE_PROB" = "director-uneven-sin" ] || [ "$MOVE_PROB" = "director-symmetric-sin" ]; then
     echo "#   - G parameter: $g" >> "$MASTER_LOG"
 fi
 

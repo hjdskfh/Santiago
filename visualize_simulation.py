@@ -1542,4 +1542,47 @@ if __name__ == "__main__":
         # View single heatmap from file path
         file_path = input("Enter path to occupancy .dat file: ").strip()
         if os.path.exists(file_path):
-            save_choice = input("Save image to file? (y/n): "
+            save_choice = input("Save image to file? (y/n): ").strip().lower()
+            save_path = None
+            if save_choice == 'y':
+                save_path = input("Enter save path (or press Enter for auto-name): ").strip()
+                if not save_path:
+                    filename = os.path.basename(file_path).replace('.dat', '.png')
+                    save_path = f"analysis/{filename}"
+            
+            print_single_heatmap(file_path=file_path, save_path=save_path)
+            print("Single heatmap complete!")
+        else:
+            print(f"File not found: {file_path}")
+    
+    elif mode_choice == '6':
+        # View time evolution of single configuration
+        dir_path = input("Enter path to configuration directory: ").strip()
+        if os.path.exists(dir_path):
+            save_choice = input("Save images and animation? (y/n): ").strip().lower()
+            save_dir = "analysis/time_evolution" if save_choice == 'y' else None
+            
+            show_choice = input("Show individual frames? (y/n): ").strip().lower()
+            show_individual = show_choice == 'y'
+            
+            visualize_time_evolution(dir_path, save_dir=save_dir, show_individual=show_individual)
+            print("Time evolution visualization complete!")
+        else:
+            print(f"Directory not found: {dir_path}")
+    
+    elif mode_choice == '7':
+        # Analyze movement statistics
+        print("Analyzing movement statistics...")
+        print_moving_particles(runs_dir)
+    
+    elif mode_choice == '12':
+        # Create 2D stacked density evolution (restored option 12)
+        save_choice = input("Save stacked density evolution images to file? (y/n): ").strip().lower()
+        save_dir = "analysis/density_stacked_evolution" if save_choice == 'y' else None
+        
+        show_choice = input("Show individual parameter combinations? (y/n): ").strip().lower()
+        show_individual = show_choice == 'y'
+        
+        print("Creating 2D stacked density evolution visualization...")
+        visualize_density_evolution_stacked(runs_dir, save_dir=save_dir, show_individual=show_individual)
+        print("2D stacked density evolution complete!")
