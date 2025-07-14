@@ -235,8 +235,8 @@ echo "Starting parameter sweep..."
 
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
-densities=(0.7 0.9 1.1 1.3 1.5)
-tumble_rates=(0.01 0.02 0.03 0.04 0.05 0.07 0.09)
+densities=(0.7 0.9 1.1)
+tumble_rates=(0.05 0.07 0.09)
 total_time=10000
 start_tumble_rate=0.005
 

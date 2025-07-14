@@ -71,8 +71,6 @@ void InitializeDirectorUnevenSinMap(double lower_bound, double upper_bound);
 void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound);
 void InitializeMoveProbMap(void);
 
-
-
 // Debug functions for printing movement probability map
 void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y);
 void PrintMoveProbMapSample(void);
@@ -184,8 +182,8 @@ double shifted_uneven_sin_for_search(double x) {
 }
 
 double symmetric_sin_for_search(double x) {
-    // Symmetric version: G * sin(2 * x) + 0.5
-    return G * sin(2 * x) + 0.5;
+    // Symmetric version: G * sin(x) + 0.5
+    return G * sin(x) + 0.5;
 }
 
 // Unified potential initialization function
@@ -214,7 +212,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
     } else {
         for (int x = 0; x < Lx; x++) {
             for (int y = 0; y < Ly; y++) {
-                double scale_x = ((double)x / Lx) * 2 * M_PI;
+                double scale_x = ((double)x / Lx) * 2 * M_PI; 
                 MoveProbMap[x][y] = rescaling_function(func, scale_x, lower_bound, upper_bound, f_max, f_min);
                 // Clamp to [0,1]
                 if (isnan(MoveProbMap[x][y]) || isinf(MoveProbMap[x][y])) {
@@ -241,15 +239,7 @@ void InitializeDirectorUnevenSinMap(double lower_bound, double upper_bound) {
 
 void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound) {
     // This potential is symmetric, so we can use the same function
-    fprintf(stderr, "[DEBUG] Initializing director-symmetric-sin with G=%.6f, lower=%.3f, upper=%.3f\n", G, lower_bound, upper_bound);
-    if (fabs(G) > 10.0) {
-        fprintf(stderr, "[ERROR] G parameter is too large (G=%.6f). This may cause instability.\n", G);
-        exit(1);
-    }
     InitializeSinPotentialMap(symmetric_sin_for_search, lower_bound, upper_bound);
-    fprintf(stderr, "[DEBUG] Finished InitializeSinPotentialMap for director-symmetric-sin. Printing MoveProbMapSample...\n");
-    // Print a sample of the probability map for debugging
-    PrintMoveProbMapSample();
 }
 
 
@@ -846,13 +836,9 @@ void ShowUsage(const char* program_name) {
 
 // Parse command line arguments
 int ParseArguments(int argc, char **argv, SimulationParams *params) {
-    fprintf(stderr, " Step 0.2: Parsing command line arguments...\n");
     InitializeDefaultParams(params);
-    fprintf(stderr, " Step 0.3: Default parameters initialized.\n");
 
     bool density_set = false, tumble_set = false, time_set = false, name_set = false;
-    
-    fprintf(stderr, " Step 0.4: Checking command line arguments...\n");
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
@@ -866,7 +852,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->density = atof(argv[++i]);
             density_set = true;
-            fprintf(stderr, "Step 0.5: Parsed option '--density' with value '%f'\n", params->density);
         }
         else if (strcmp(argv[i], "--tumble-rate") == 0) {
             if (i + 1 >= argc) {
@@ -875,7 +860,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->tumb_rate = atof(argv[++i]);
             tumble_set = true;
-            fprintf(stderr, "Step 0.5: Parsed option '--tumble-rate' with value '%f'\n", params->tumb_rate);
         }
         else if (strcmp(argv[i], "--total-time") == 0) {
             if (i + 1 >= argc) {
@@ -884,7 +868,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->total_time = atol(argv[++i]);
             time_set = true;
-            fprintf(stderr, "Step 0.5: Parsed option '--total-time' with value '%ld'\n", params->total_time);
         }
         else if (strcmp(argv[i], "--run-name") == 0) {
             if (i + 1 >= argc) {
@@ -893,9 +876,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             strncpy(params->run_name, argv[++i], sizeof(params->run_name) - 1);
             params->run_name[sizeof(params->run_name) - 1] = '\0';
-            fprintf(stderr, "[DEBUG] --run-name input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->run_name));
             name_set = true;
-            fprintf(stderr, "Step 0.5: Parsed option '--run-name' with value '%s'\n", params->run_name);
         }
         else if (strcmp(argv[i], "--initial-file") == 0) {
             if (i + 1 >= argc) {
@@ -904,8 +885,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             strncpy(params->initial_file, argv[++i], sizeof(params->initial_file) - 1);
             params->initial_file[sizeof(params->initial_file) - 1] = '\0';
-            fprintf(stderr, "[DEBUG] --initial-file input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->initial_file));
-            fprintf(stderr, "Step 0.5: Parsed option '--initial-file' with value '%s'\n", params->initial_file);
         }
         else if (strcmp(argv[i], "--potential") == 0) {
             if (i + 1 >= argc) {
@@ -914,8 +893,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             strncpy(params->potential_type, argv[++i], sizeof(params->potential_type) - 1);
             params->potential_type[sizeof(params->potential_type) - 1] = '\0';
-            fprintf(stderr, "[DEBUG] --potential input length: %zu, buffer size: %zu\n", strlen(argv[i]), sizeof(params->potential_type));
-            fprintf(stderr, "Step 0.5: Parsed option '--potential' with value '%s'\n", params->potential_type);
         }
         else if (strcmp(argv[i], "--save-interval") == 0) {
             if (i + 1 >= argc) {
@@ -923,11 +900,9 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->save_interval = atol(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--save-interval' with value '%ld'\n", params->save_interval);
         }
         else if (strcmp(argv[i], "--track-movement") == 0) {
             params->track_movement = 1;
-            fprintf(stderr, "Step 0.5: Parsed flag '--track-movement'\n");
         }
         else if (strcmp(argv[i], "--gamma") == 0) {
             if (i + 1 >= argc) {
@@ -935,7 +910,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->gamma = atof(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--gamma' with value '%f'\n", params->gamma);
         }
         else if (strcmp(argv[i], "--g") == 0) {
             if (i + 1 >= argc) {
@@ -943,7 +917,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->g = atof(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--g' with value '%f'\n", params->g);
         }
         else if (strcmp(argv[i], "--potential-lower") == 0) {
             if (i + 1 >= argc) {
@@ -951,7 +924,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->potential_lower = atof(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--potential-lower' with value '%f'\n", params->potential_lower);
         }
         else if (strcmp(argv[i], "--potential-upper") == 0) {
             if (i + 1 >= argc) {
@@ -959,19 +931,15 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->potential_upper = atof(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--potential-upper' with value '%f'\n", params->potential_upper);
         }
         else if (strcmp(argv[i], "--track-occupancy") == 0) {
             params->track_occupancy = true;
-            fprintf(stderr, "Step 0.5: Parsed flag '--track-occupancy'\n");
         }
         else if (strcmp(argv[i], "--track-density") == 0) {
             params->track_density = true;
-            fprintf(stderr, "Step 0.5: Parsed flag '--track-density'\n");
         }
         else if (strcmp(argv[i], "--track-flux") == 0) {
             params->track_flux = true;
-            fprintf(stderr, "Step 0.5: Parsed flag '--track-flux'\n");
         }
         else if (strcmp(argv[i], "--seed") == 0) {
             if (i + 1 >= argc) {
@@ -979,7 +947,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
                 return -1;
             }
             params->seed = atol(argv[++i]);
-            fprintf(stderr, "Step 0.5: Parsed option '--seed' with value '%ld'\n", params->seed);
         }
         // ============ ADD NEW PARAMETERS HERE ============
         // To add a new parameter:
@@ -1011,7 +978,6 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
         return -1;
     }
     
-    fprintf(stderr, "Step 0.6: All required parameters set.\n");
 
     // Set default save interval if not specified
     if (params->save_interval == 0) {
@@ -1020,18 +986,14 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
         fprintf(stderr, "SaveInterval not specified, using 1/TumbRate = %ld\n", params->save_interval);
     }
 
-    fprintf(stderr, "Step 0.7: All parameters parsed successfully.\n");
     
     return 1; // Success
 }
     
 int main(int argc, char **argv)
 {
-    fprintf(stderr, "Step 0: Starting simulation with %d arguments\n", argc);
     long int step;
     SimulationParams params;
-
-    fprintf(stderr, "Step 0.1: Initializing parameters\n");
     
     // Parse command line arguments
     int parse_result = ParseArguments(argc, argv, &params);
@@ -1039,7 +1001,6 @@ int main(int argc, char **argv)
         return (parse_result == 0) ? 0 : 1; // 0 for help, 1 for error
     }
 
-    fprintf(stderr, "Step 0.5: after parse arg\n");
     
     // Copy parameters to global variables (for compatibility with existing code)
     Density = params.density;
@@ -1055,15 +1016,12 @@ int main(int argc, char **argv)
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
     
-    fprintf(stderr, "Step 1 complete: Parameters parsed successfully.\n");
     // Initialize the simulation (pass seed from params)
     InitialCondition(params.seed);
     
-    fprintf(stderr, "Step 2 complete: Initial condition set.\n");
 
     // Set the potential function
     SetPotentialFunction(PotentialType);
-    fprintf(stderr, "[DEBUG] After SetPotentialFunction: PotentialType='%s', PotentialTypeCode=%d, G=%.6f\n", PotentialType, PotentialTypeCode, G);
     
     // Create the output directory
     if(mkdir(RunName, 0755) != 0 && errno != EEXIST)
@@ -1074,10 +1032,6 @@ int main(int argc, char **argv)
     
     // Compute the number of particles (may be overridden if loading from file)
     NParticles=(int)(Density*Lx*Ly);
-    if (NParticles > MaxNPart) {
-        fprintf(stderr, "[ERROR] NParticles (%ld) exceeds MaxNPart (%d). Reduce density or increase nmax/Lx/Ly.\n", NParticles, MaxNPart);
-        return 1;
-    }
     
     fprintf(stderr,"Run name: %s\n", RunName);
     fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",

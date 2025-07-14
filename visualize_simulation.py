@@ -1316,18 +1316,18 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
     if not all_processed_data:
         print("No processed data available for comparison grid")
         return
-    
+
     # Get unique parameter values
     densities = sorted(list(set(item['density'] for item in all_processed_data)))
     tumble_rates = sorted(list(set(item['tumble_rate'] for item in all_processed_data)))
-    
+
     n_rows = len(densities)
     n_cols = len(tumble_rates)
-    
+
     print(f"Creating density evolution comparison grid: {n_rows} densities × {n_cols} tumble rates")
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5*n_cols, 4*n_rows))
-    
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.5*n_cols, 3.5*n_rows))
+
     # Handle different subplot arrangements
     if n_rows == 1 and n_cols == 1:
         axes = np.array([[axes]])
@@ -1335,81 +1335,91 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
         axes = np.array([axes])
     elif n_cols == 1:
         axes = np.array([[ax] for ax in axes])
-    
+
     # Find global min/max for consistent color scaling across all data
     all_density_2d = [item['density_2d'] for item in all_processed_data]
     global_min = np.min([np.min(data) for data in all_density_2d])
     global_max = np.max([np.max(data) for data in all_density_2d])
-    
+
     # Create lookup dictionary for quick access
     data_dict = {(item['density'], item['tumble_rate']): item for item in all_processed_data}
-    
+
     # Fill the grid
     for row, density in enumerate(densities):
         for col, tumble_rate in enumerate(tumble_rates):
+            ax = axes[row, col]
             if (density, tumble_rate) in data_dict:
                 item = data_dict[(density, tumble_rate)]
                 density_2d = item['density_2d']
                 time_steps = item['time_steps']
-                
+
                 # Create the heatmap
-                im = axes[row, col].imshow(density_2d, cmap='viridis', aspect='auto', 
-                                          origin='lower', interpolation='nearest',
-                                          vmin=global_min, vmax=global_max)
-                
+                im = ax.imshow(density_2d, cmap='viridis', aspect='auto',
+                              origin='lower', interpolation='nearest',
+                              vmin=global_min, vmax=global_max)
+
                 # Set up y-tick labels to show time steps (subsample if too many)
                 n_ticks = min(5, len(time_steps))
                 tick_indices = np.linspace(0, len(time_steps)-1, n_ticks, dtype=int)
-                axes[row, col].set_yticks(tick_indices)
-                axes[row, col].set_yticklabels([str(time_steps[i]) for i in tick_indices], fontsize=8)
-                
+                ax.set_yticks(tick_indices)
+                ax.set_yticklabels([str(time_steps[i]) for i in tick_indices], fontsize=8)
+
                 # Remove x-ticks for cleaner look
-                axes[row, col].set_xticks([])
-                
-                # Add parameter values as subtitle
-                axes[row, col].set_title(f"ρ={density:.2f}, α={tumble_rate:.3f}", fontsize=10)
-                
-                # Add basic statistics as text
+                ax.set_xticks([])
+
+                # Add mean and std as text
                 mean_val = np.mean(density_2d)
                 std_val = np.std(density_2d)
-                axes[row, col].text(0.02, 0.98, f'μ={mean_val:.2f}\nσ={std_val:.2f}', 
-                                   transform=axes[row, col].transAxes, 
-                                   verticalalignment='top', fontsize=8, 
-                                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+                ax.text(0.02, 0.98, f'μ={mean_val:.2f}\nσ={std_val:.2f}',
+                        transform=ax.transAxes, verticalalignment='top', fontsize=8,
+                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
             else:
                 # No data for this parameter combination
-                axes[row, col].text(0.5, 0.5, 'No Data', 
-                                   transform=axes[row, col].transAxes, 
-                                   horizontalalignment='center', verticalalignment='center',
-                                   fontsize=12)
-                axes[row, col].set_xticks([])
-                axes[row, col].set_yticks([])
-    
-    # Add row and column labels
+                ax.text(0.5, 0.5, 'No Data',
+                        transform=ax.transAxes,
+                        horizontalalignment='center', verticalalignment='center',
+                        fontsize=12)
+                ax.set_xticks([])
+                ax.set_yticks([])
+
+    # Add row and column labels (left and top)
     for row, density in enumerate(densities):
-        axes[row, 0].set_ylabel(f"ρ={density:.2f}", fontsize=12, fontweight='bold')
-    
+        axes[row, 0].set_ylabel(f"{density:.2f}", fontsize=14, fontweight='bold')
+
     for col, tumble_rate in enumerate(tumble_rates):
-        axes[-1, col].set_xlabel(f"α={tumble_rate:.3f}", fontsize=12, fontweight='bold')
-    
-    # Add overall axis labels
-    fig.text(0.02, 0.5, 'Density ρ', fontsize=18, fontweight='bold', 
+        axes[0, col].set_xlabel(f"{tumble_rate:.3f}", fontsize=14, fontweight='bold')
+        axes[0, col].xaxis.set_label_position('top')
+
+    # Add larger axis labels on the sides/top
+    left_margin = 0.08
+    right_margin = 0.88
+    top_margin = 0.88
+    bottom_margin = 0.1
+    fig.subplots_adjust(left=left_margin, right=right_margin, top=top_margin, bottom=bottom_margin)
+
+    # Calculate automatic positioning for labels based on margins
+    density_x = left_margin * 0.2  # 20% into the left margin
+    density_y = (top_margin + bottom_margin) / 2  # Center vertically in plot area
+    tumble_x = (left_margin + right_margin) / 2  # Center horizontally in plot area
+    tumble_y = top_margin + (1 - top_margin) * 0.3  # 30% into the top margin space
+
+    # Add larger axis labels on the sides with automatic positioning
+    fig.text(density_x, density_y, r'Density $\rho$', fontsize=20, fontweight='bold',
              rotation=90, va='center', ha='center')
-    fig.text(0.5, 0.02, 'Tumble Rate α', fontsize=18, fontweight='bold', 
+    fig.text(tumble_x, tumble_y, r'Tumble Rate $\alpha$', fontsize=20, fontweight='bold',
              ha='center', va='center')
-    
+
     # Add colorbar
-    fig.subplots_adjust(left=0.08, right=0.92, top=0.92, bottom=0.08)
-    cbar_ax = fig.add_axes([0.94, 0.15, 0.02, 0.7])
+    cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
     cbar = fig.colorbar(im, cax=cbar_ax, label='Density Value')
-    cbar.set_label('Density Value', fontsize=14, fontweight='bold')
-    
-    # Add main title
-    plt.figtext(0.5, 0.97, 'Density Evolution Comparison Grid (2D Stacked)', 
-                fontsize=20, fontweight='bold', ha='center')
-    plt.figtext(0.5, 0.94, 'Time evolution shown as stacked 1D profiles (vertical: time, horizontal: space)', 
-                fontsize=14, ha='center', style='italic')
-    
+    cbar.set_label('Density Value', fontsize=16, fontweight='bold')
+
+    # Add main title and subtitle
+    plt.figtext(0.5, 0.98, 'Density Evolution Comparison Grid (2D Stacked)',
+                fontsize=28, fontweight='bold', ha='center')
+    plt.figtext(0.5, 0.95, 'Time evolution shown as stacked 1D profiles (vertical: time, horizontal: space)',
+                fontsize=16, ha='center', style='italic')
+
     # Save the comparison grid
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
@@ -1423,7 +1433,7 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
         else:
             save_path = 'analysis/density_evolution_comparison_grid.png'
         os.makedirs('analysis', exist_ok=True)
-    
+
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"Density evolution comparison grid saved to: {save_path}")
     plt.close()
@@ -1579,10 +1589,16 @@ if __name__ == "__main__":
         # Create 2D stacked density evolution (restored option 12)
         save_choice = input("Save stacked density evolution images to file? (y/n): ").strip().lower()
         save_dir = "analysis/density_stacked_evolution" if save_choice == 'y' else None
-        
+
         show_choice = input("Show individual parameter combinations? (y/n): ").strip().lower()
         show_individual = show_choice == 'y'
-        
+
         print("Creating 2D stacked density evolution visualization...")
-        visualize_density_evolution_stacked(runs_dir, save_dir=save_dir, show_individual=show_individual)
+        visualize_density_evolution_stacked(
+            runs_dir,
+            save_dir=save_dir,
+            show_individual=show_individual,
+            create_comparison_grid=True,
+            run_date=run_date
+        )
         print("2D stacked density evolution complete!")
