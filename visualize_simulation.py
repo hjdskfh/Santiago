@@ -8,7 +8,7 @@ from datetime import datetime
 
 from postprocessing.helper import create_discrete_colormap, extract_parameters_from_folder, calculate_metrics, load_occupancy_data, process_folder_for_sweep, find_files_in_directory
 
-def create_individual_heatmaps(results):
+def create_individual_heatmaps(results, save_dir=None):
     """
     Create individual heatmap files for each parameter combination
     """
@@ -24,14 +24,16 @@ def create_individual_heatmaps(results):
         # Create title and save path
         title = f'Density={density:.2f}, Tumbling Rate={tumble_rate:.3f}, Time={totaltime}'
         folder_name = os.path.basename(folder)
-        output_file = f'{folder}/heatmap_{folder_name}.png'
-        
-        # Use print_single_heatmap but with data instead of file path
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            output_file = f'{save_dir}/heatmap_{folder_name}.png'
+        else:
+            output_file = f'{folder}/heatmap_{folder_name}.png'
         print_single_heatmap(data=data, title=title, save_path=output_file, show=False)
         
     print(f"Created {len(results)} individual heatmaps")
 
-def create_comparison_grid(results, run_date="", number=None):
+def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     """
     Create a grid comparison of all heatmaps
     """
@@ -176,20 +178,24 @@ def create_comparison_grid(results, run_date="", number=None):
         plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
                     fontsize=18, ha='center')
     
-    # Create filename with date information
-    if run_date:
-        filename = f'analysis/comp_{run_date}__{number if number is not None else "unknown"}.png'
+    folder = result['folder']
+    folder_name = os.path.basename(folder)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        output_file = f'{save_dir}/comp_{run_date[:16]}.png'
     else:
-        filename = f'analysis/comp_{number if number is not None else "unknown"}.png'
-    
-    
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"Comparison grid saved to '{filename}'")
+        output_file = f'{folder}/comp_.png'
+
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    print(f"Comparison grid saved to '{output_file}'")
     # plt.show()  # Comment out to only save, not display
 
-def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False):
+def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False, save_dir=None):
     """Create comprehensive visualizations for parameter sweep results."""
-    os.makedirs('analysis', exist_ok=True)
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+    else:
+        os.makedirs('analysis', exist_ok=True)
     
     if not os.path.exists(runs_dir):
         print(f"No '{runs_dir}' directory found!")
@@ -227,7 +233,7 @@ def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_
         
         for time_step in sorted(all_times):
             print(f"Processing time step {time_step}...")
-            create_parameter_sweep_visualization(runs_dir, number=time_step, process_all_times=False)
+            create_parameter_sweep_visualization(runs_dir, number=time_step, process_all_times=False, save_dir=save_dir)
         return
     
     # Process single time step
@@ -242,8 +248,7 @@ def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_
         return
     
     print(f"Processing {len(results)} results for time step {number}")
-    create_individual_heatmaps(results)
-    create_comparison_grid(results, run_date, number)
+    create_comparison_grid(results, save_dir=save_dir, run_date=run_date, number=number)
 
 def print_single_heatmap(file_path=None, data=None, title=None, save_path=None, show=True):
     """
@@ -1130,8 +1135,6 @@ def create_density_comparison_grid(runs_dir, save_dir=None):
     print(f"Density comparison grid saved to: {save_path}")
     plt.close()
 
-
-
 def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual=True, create_comparison_grid=False, run_date=None):
     """
     Create 2D stacked visualization of 1D density evolution over time.
@@ -1471,10 +1474,15 @@ if __name__ == "__main__":
             run_date = datetime.strptime(timestamp, "%Y%m%d_%H%M%S").strftime("%Y%m%d_%H%M%S")
         except:
             run_date = timestamp.replace(":", "").replace(" ", "_")
-    
+
+    # Create a new analysis folder for this run
+    analysis_dir = f"analysis/{run_date}" if run_date else "analysis/default"
+    os.makedirs(analysis_dir, exist_ok=True)
+
     print("Starting simulation visualization...")
     print(f"Run date identifier: {run_date}")
-    
+    print(f"Analysis output will be saved in: {analysis_dir}")
+
     # Show options to user
     print("\nChoose visualization mode:")
     print("1. Parameter sweep comparison grid (specific time step)")
@@ -1484,15 +1492,15 @@ if __name__ == "__main__":
     print("5. View single heatmap from file path")
     print("6. View time evolution of single configuration")
     print("7. Analyze movement statistics")
-    print("12. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
+    print("8. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-7, 12): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '12']:
+            mode_choice = input("\nEnter your choice (1-8): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
                 break
             else:
-                print("Please enter a number from 1-7 or 12.")
+                print("Please enter a number from 1-8.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -1506,16 +1514,16 @@ if __name__ == "__main__":
                 break
             except ValueError:
                 print("Please enter a valid integer.")
-        
+
         print(f"Analyzing occupancy files with number: {number}")
-        create_parameter_sweep_visualization(runs_dir, number=number)
+        create_parameter_sweep_visualization(runs_dir, number=number, save_dir=analysis_dir)
         print("Visualization complete!")
-        
+
     elif mode_choice == '2':
         # Create grids for all time steps
-        create_parameter_sweep_visualization(runs_dir, process_all_times=True)
+        create_parameter_sweep_visualization(runs_dir, process_all_times=True, save_dir=analysis_dir)
         print("All visualizations complete!")
-        
+
     elif mode_choice == '3':
         # View START configuration heatmaps
         while True:
@@ -1525,13 +1533,13 @@ if __name__ == "__main__":
                 break
             except ValueError:
                 print("Please enter a valid integer.")
-        
+
         save_choice = input("Save images to file? (y/n): ").strip().lower()
-        save_dir = "analysis/start_heatmaps" if save_choice == 'y' else None
-        
+        save_dir = os.path.join(analysis_dir, "start_heatmaps") if save_choice == 'y' else None
+
         print_multiple_heatmaps(runs_dir, time_step=time_step, save_dir=save_dir, prefix_filter="START_")
         print("START heatmaps complete!")
-        
+
     elif mode_choice == '4':
         # View all heatmaps in directory
         while True:
@@ -1541,13 +1549,13 @@ if __name__ == "__main__":
                 break
             except ValueError:
                 print("Please enter a valid integer.")
-        
+
         save_choice = input("Save images to file? (y/n): ").strip().lower()
-        save_dir = "analysis/all_heatmaps" if save_choice == 'y' else None
-        
+        save_dir = os.path.join(analysis_dir, "all_heatmaps") if save_choice == 'y' else None
+
         print_multiple_heatmaps(runs_dir, time_step=time_step, save_dir=save_dir)
         print("Directory heatmaps complete!")
-        
+
     elif mode_choice == '5':
         # View single heatmap from file path
         file_path = input("Enter path to occupancy .dat file: ").strip()
@@ -1558,37 +1566,37 @@ if __name__ == "__main__":
                 save_path = input("Enter save path (or press Enter for auto-name): ").strip()
                 if not save_path:
                     filename = os.path.basename(file_path).replace('.dat', '.png')
-                    save_path = f"analysis/{filename}"
-            
+                    save_path = os.path.join(analysis_dir, filename)
+
             print_single_heatmap(file_path=file_path, save_path=save_path)
             print("Single heatmap complete!")
         else:
             print(f"File not found: {file_path}")
-    
+
     elif mode_choice == '6':
         # View time evolution of single configuration
         dir_path = input("Enter path to configuration directory: ").strip()
         if os.path.exists(dir_path):
             save_choice = input("Save images and animation? (y/n): ").strip().lower()
-            save_dir = "analysis/time_evolution" if save_choice == 'y' else None
-            
+            save_dir = os.path.join(analysis_dir, "time_evolution") if save_choice == 'y' else None
+
             show_choice = input("Show individual frames? (y/n): ").strip().lower()
             show_individual = show_choice == 'y'
-            
+
             visualize_time_evolution(dir_path, save_dir=save_dir, show_individual=show_individual)
             print("Time evolution visualization complete!")
         else:
             print(f"Directory not found: {dir_path}")
-    
+
     elif mode_choice == '7':
         # Analyze movement statistics
         print("Analyzing movement statistics...")
-        print_moving_particles(runs_dir)
-    
-    elif mode_choice == '12':
+        print_moving_particles(runs_dir, save_dir=analysis_dir)
+
+    elif mode_choice == '8':
         # Create 2D stacked density evolution (restored option 12)
         save_choice = input("Save stacked density evolution images to file? (y/n): ").strip().lower()
-        save_dir = "analysis/density_stacked_evolution" if save_choice == 'y' else None
+        save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
 
         show_choice = input("Show individual parameter combinations? (y/n): ").strip().lower()
         show_individual = show_choice == 'y'
