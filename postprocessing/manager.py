@@ -6,10 +6,11 @@ from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime
 
-from postprocessing.helper import create_discrete_colormap, find_files_in_directory, \
+from postprocessing.engine import create_discrete_colormap, find_files_in_directory, \
     load_occupancy_data, extract_parameters_from_folder, process_folder_for_sweep, \
     create_comparison_grid, create_density_evolution_comparison_grid, \
-    create_individual_movement_plot, create_combined_movement_plots, smoothing_nadaraya_watson_kernel_regression
+    create_individual_movement_plot, create_combined_movement_plots, \
+    compute_profiles_by_step, plot_density_derivative_grid
 
 
 def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False, save_dir=None):
@@ -587,3 +588,10 @@ def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, sta
             plt.show()
     else:
         print("No valid average profiles found for the given timestep.")
+
+def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None):
+    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth)
+    if not profiles_by_step:
+        print("No profiles found for the selected steps.")
+        return
+    plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives")

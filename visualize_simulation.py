@@ -8,7 +8,7 @@ from datetime import datetime
 
 from postprocessing.manager import create_parameter_sweep_visualization, \
     print_multiple_heatmaps, print_single_heatmap, visualize_time_evolution, \
-    print_moving_particles, visualize_density_evolution_stacked, average_density_option_9
+    print_moving_particles, visualize_density_evolution_stacked, average_density_option_9, analyze_density_derivatives_grid
 
 
 if __name__ == "__main__":
@@ -64,14 +64,15 @@ if __name__ == "__main__":
     print("7. Analyze movement statistics")
     print("8. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
     print("9. Average density over x for all runs from a given timestep, with comparison grid")
+    print("10. Analyze density derivatives for several averaged densities over x starting from different timesteps with comparison grid")
     
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-9): ").strip()
-            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
+            mode_choice = input("\nEnter your choice (1-10): ").strip()
+            if mode_choice in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']:
                 break
             else:
-                print("Please enter a number from 1-9.")
+                print("Please enter a number from 1-10.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
@@ -207,4 +208,33 @@ if __name__ == "__main__":
 
         average_density_option_9(runs_dir=runs_dir, save_dir=save_dir, save_choice=save_choice, start_step=start_step, smooth_density=smooth_density)
 
+    if mode_choice == '10':
+        while True:
+            try:
+                step_input = input("Enter the timesteps to analyze (e.g., 1000, 3000, 5000): ").strip()
+                step_list = [int(s.strip()) for s in step_input.split(",") if s.strip()]
+                if step_list:
+                    break
+                else:
+                    print("Please enter at least one timestep.")
+            except ValueError:
+                print("Invalid input. Please enter integers separated by commas.")
+
+
+        # do you want to smooth it?
+        smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
+        smooth_density = smooth_choice == 'y'
+
+        save_choice = input("Save comparison grid to file? (y/n): ").strip().lower()
+        title_steps = "steps_" + "_".join(map(str, step_list))
+        if save_choice == 'y' and smooth_choice == 'y':
+            # Create a directory for saving the averaged density profiles
+            save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_{title_steps}_smoothing")
+        if save_choice == 'y' and smooth_choice == 'n':
+            # Create a directory for saving the averaged density profiles without smoothing
+            save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_{title_steps}")
         
+        os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+
+        analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir)
+
