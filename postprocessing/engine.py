@@ -752,62 +752,86 @@ def compute_density_derivatives(profile, mu=None, smooth=True):
     return smoothed, first_deriv, second_deriv
 
 def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None):
+    import bisect
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
-    
-    for step in steps_to_include:
-        profiles = []
-        for folder in folders:
-            path = os.path.join(folder, f"Density_{step}.dat")
-            if os.path.isfile(path):
-                data = np.loadtxt(path)
-                if data.ndim == 1:
-                    profiles.append(data)
-                elif data.ndim == 2:
-                    profiles.append(np.mean(data, axis=0))
-        if not profiles:
-            print(f"[Warning] No profiles found for step {step}")
-            continue
-        avg_profile = np.mean(profiles, axis=0)
-        smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth)
-        profiles_by_step[step] = (smoothed, d1, d2)
+    print(f"folders found: {folders}")
+    # Pre-index all available density files per folder
+    folder_step_map = {}
+    for folder in folders:
+        density_files = [f for f in os.listdir(folder) if f.startswith("Density_") and f.endswith(".dat")]
+        steps = []
+        file_map = {}
+        for f in density_files:
+            try:
+                num = int(f.split("_")[1].split(".")[0])
+                steps.append(num)
+                file_map[num] = os.path.join(folder, f)
+            except Exception:
+                continue
+        steps.sort()
+        folder_step_map[folder] = (steps, file_map)
+    # For each folder and each requested step, collect all files >= step and compute mean profile
+    profiles_by_step = {}
+    for folder in folders:
+        steps, file_map = folder_step_map[folder]
+        folder_name = os.path.basename(folder)
+        for step in steps_to_include:
+            profiles = []
+            idx = bisect.bisect_left(steps, step)
+            for s in steps[idx:]:
+                path = file_map[s]
+                if os.path.isfile(path):
+                    data = np.loadtxt(path)
+                    if data.ndim == 1:
+                        profiles.append(data)
+                    elif data.ndim == 2:
+                        profiles.append(np.mean(data, axis=0))
+            if not profiles:
+                print(f"[Warning] No profiles found for folder {folder_name} step {step}")
+                continue
+            avg_profile = np.mean(profiles, axis=0)
+            print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
+            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth)
+            # Key by (folder_name, step)
+            profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
 
 def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives"):
-    steps = sorted(profiles_by_step.keys())
-    n_rows = len(steps)
-    n_cols = 3  # Profile, 1st Derivative, 2nd Derivative
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows), sharex=True)
-
-    if n_rows == 1:
-        axes = np.expand_dims(axes, axis=0)
-
-    for i, step in enumerate(steps):
-        profile, d1, d2 = profiles_by_step[step]
-        x = np.arange(len(profile))
-        axes[i, 0].plot(x, profile)
-        axes[i, 0].set_title(f"Smoothed Profile (Step {step})")
-        axes[i, 0].set_ylabel("Density")
-        axes[i, 0].grid(True, alpha=0.3)
-
-        axes[i, 1].plot(x, d1, color='orange')
-        axes[i, 1].set_title("1st Derivative")
-        axes[i, 1].grid(True, alpha=0.3)
-
-        axes[i, 2].plot(x, d2, color='green')
-        axes[i, 2].set_title("2nd Derivative")
-        axes[i, 2].grid(True, alpha=0.3)
-
-    for ax in axes[-1]:
-        ax.set_xlabel("X Position")
-
-    plt.suptitle(f"{title_prefix}", fontsize=16, fontweight='bold')
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    if save_choice:
-        save_path = f"{save_dir}/density_derivative_grid.png"
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"Density derivative grid saved to: {save_path}")
-    else:
-        plt.show()
+    # Group keys by subfolder
+    from collections import defaultdict
+    folder_steps = defaultdict(list)
+    for key in profiles_by_step:
+        folder, step = key
+        folder_steps[folder].append(step)
+    for folder in folder_steps:
+        steps = sorted(folder_steps[folder])
+        n_rows = len(steps)
+        n_cols = 3  # Profile, 1st Derivative, 2nd Derivative
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3 * n_rows), sharex=True)
+        if n_rows == 1:
+            axes = np.expand_dims(axes, axis=0)
+        for i, step in enumerate(steps):
+            profile, d1, d2 = profiles_by_step[(folder, step)]
+            x = np.arange(len(profile))
+            axes[i, 0].plot(x, profile)
+            axes[i, 0].set_title(f"Smoothed Profile (Step {step})")
+            axes[i, 0].set_ylabel("Density")
+            axes[i, 0].grid(True, alpha=0.3)
+            axes[i, 1].plot(x, d1, color='orange')
+            axes[i, 1].set_title("1st Derivative")
+            axes[i, 1].grid(True, alpha=0.3)
+            axes[i, 2].plot(x, d2, color='green')
+            axes[i, 2].set_title("2nd Derivative")
+            axes[i, 2].grid(True, alpha=0.3)
+        for ax in axes[-1]:
+            ax.set_xlabel("X Position")
+        plt.suptitle(f"{title_prefix} - {folder}", fontsize=16, fontweight='bold')
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
+        if save_choice:
+            save_path = f"{save_dir}/density_derivative_grid_{folder}.png"
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+            print(f"Density derivative grid saved to: {save_path}")
+        else:
+            plt.show()
