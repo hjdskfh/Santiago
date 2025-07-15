@@ -1,6 +1,15 @@
-from postprocessing.all_options import create_individual_heatmaps, visualize_density_evolution_stacked, \
-    create_parameter_sweep_visualization, print_multiple_heatmaps, print_single_heatmap, visualize_time_evolution, \
-    print_moving_particles, average_density_option_9
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import glob
+from matplotlib.colors import ListedColormap
+import re
+from datetime import datetime 
+
+from postprocessing.manager import create_parameter_sweep_visualization, \
+    print_multiple_heatmaps, print_single_heatmap, visualize_time_evolution, \
+    print_moving_particles, visualize_density_evolution_stacked, average_density_option_9
+
 
 if __name__ == "__main__":
     import sys
@@ -184,7 +193,18 @@ if __name__ == "__main__":
             except ValueError:
                 print("Please enter a valid integer.")
 
+        # do you want to smooth it?
+        smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
+        smooth_density = smooth_choice == 'y'
+
         save_choice = input("Save comparison grid to file? (y/n): ").strip().lower()
-        save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}") if save_choice == 'y' else None
-        average_density_option_9(save_dir=save_dir, save_choice=save_choice, start_step=start_step)
+        if save_choice == 'y' and smooth_choice == 'y':
+            # Create a directory for saving the averaged density profiles
+            save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}_smoothing")
+        if save_choice == 'y' and smooth_choice == 'n':
+            # Create a directory for saving the averaged density profiles without smoothing
+            save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}")
+
+        average_density_option_9(runs_dir=runs_dir, save_dir=save_dir, save_choice=save_choice, start_step=start_step, smooth_density=smooth_density)
+
         
