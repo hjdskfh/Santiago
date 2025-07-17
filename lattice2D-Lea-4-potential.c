@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <time.h>
 
 // Size of the mesh
 #define Lx 200
@@ -135,8 +136,6 @@ static const PotentialDefinition POTENTIAL_REGISTRY[] = {
     {NULL, NULL} // Terminator
 };
 
-
-
 // Golden Section Search to find maximum
 double golden_section_search(double (*func)(double), double a, double b, double tol) {
     const double gr = (sqrt(5) + 1) / 2;  // Golden ratio
@@ -257,8 +256,7 @@ double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
             }
             return MoveProbMap[x][y];
 
-        case 2: // "director-uneven-sin" both case 2 and 3 use same logic
-        case 3: // "director-symmetric-sin"
+        case 2: // "director-uneven-sin" 
             if (dir_y != 0) {
                 return 0.5;
             } else {
@@ -266,6 +264,20 @@ double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
                     InitializeMoveProbMap();
                 }
                 return MoveProbMap[x][y];
+            }
+
+        case 3: // "director-symmetric-sin"
+            if (dir_y == 0) {
+                return 0.5;
+            } else {
+                if (!MoveProbMapInitialized) {
+                    InitializeMoveProbMap();
+                }
+                if (dir_y > 0) {
+                    return MoveProbMap[x][y];
+                } else { // dir_y < 0
+                    return 1 - MoveProbMap[x][y]; // MoveProbMap[x][y] + 2 * (0.5 - MoveProbMap[x][y]); or MoveProbMap[x][y] - 2 * (MoveProbMap[x][y] - 0.5);
+                }
             }
 
         default:
@@ -1061,6 +1073,7 @@ int main(int argc, char **argv)
     //Loop
     for(step=1;step<=TotalTime;step++)
     {
+        
         if(step%3000==0)
             fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
         Iterate(step);

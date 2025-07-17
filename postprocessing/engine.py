@@ -739,7 +739,7 @@ def nw_second_derivative(x_eval, x_train, y_train, mu):
         d2y_pred.append(num / denom)
     return np.array(d2y_pred)
 
-def compute_density_derivatives(profile, mu=None, smooth=True):
+def compute_density_derivatives(profile, mu=None, smooth=True, method="kernel"):
     x = np.arange(len(profile))
     if mu is None:
         mu = np.std(profile)
@@ -747,11 +747,19 @@ def compute_density_derivatives(profile, mu=None, smooth=True):
         smoothed = nw_kernel_regression(profile, x, x, mu)
     else:
         smoothed = profile
-    first_deriv = nw_first_derivative(x, x, smoothed, mu)
-    second_deriv = nw_second_derivative(x, x, smoothed, mu)
+
+    if method == "kernel":
+        first_deriv = nw_first_derivative(x, x, smoothed, mu)
+        second_deriv = nw_second_derivative(x, x, smoothed, mu)
+    elif method == "diff":
+        first_deriv = np.gradient(smoothed)
+        second_deriv = np.gradient(first_deriv)
+    else:
+        raise ValueError(f"Unknown method '{method}' for derivative computation, try diff or kernel")
+
     return smoothed, first_deriv, second_deriv
 
-def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None):
+def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method="kernel"):
     import bisect
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
@@ -792,12 +800,12 @@ def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None):
                 continue
             avg_profile = np.mean(profiles, axis=0)
             print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
-            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth)
+            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method="kernel")
             # Key by (folder_name, step)
             profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
 
-def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives"):
+def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method="kernel"):
     # Group keys by subfolder
     from collections import defaultdict
     folder_steps = defaultdict(list)
@@ -815,7 +823,7 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
             profile, d1, d2 = profiles_by_step[(folder, step)]
             x = np.arange(len(profile))
             axes[i, 0].plot(x, profile)
-            axes[i, 0].set_title(f"Smoothed Profile (Step {step})")
+            axes[i, 0].set_title(f"Smoothed Profile (Step {step}) for method '{method}'")
             axes[i, 0].set_ylabel("Density")
             axes[i, 0].grid(True, alpha=0.3)
             axes[i, 1].plot(x, d1, color='orange')
@@ -829,7 +837,7 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
         plt.suptitle(f"{title_prefix} - {folder}", fontsize=16, fontweight='bold')
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         if save_choice:
-            save_path = f"{save_dir}/density_derivative_grid_{folder}.png"
+            save_path = f"{save_dir}/density_derivative_grid_{method}_{folder}.png"
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Density derivative grid saved to: {save_path}")

@@ -10,7 +10,7 @@ from postprocessing.engine import create_discrete_colormap, find_files_in_direct
     load_occupancy_data, extract_parameters_from_folder, process_folder_for_sweep, \
     create_comparison_grid, create_density_evolution_comparison_grid, \
     create_individual_movement_plot, create_combined_movement_plots, \
-    compute_profiles_by_step, plot_density_derivative_grid
+    compute_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid
 
 
 def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False, save_dir=None):
@@ -589,9 +589,9 @@ def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, sta
     else:
         print("No valid average profiles found for the given timestep.")
 
-def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None):
-    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth)
+def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method="kernel"):
+    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method)
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return
-    plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives")
+    plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)

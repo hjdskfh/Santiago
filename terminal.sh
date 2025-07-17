@@ -16,5 +16,5 @@ echo ""
 
 # Run the initialization script with the new flags
 # Modify the line below to customize your run #director-uneven-sin
-./run_4_potential.sh --move-prob director-symmetric-sin --track-movement --track-flux --track-density "$@" 
+time ./run_4_potential.sh --move-prob uneven-sin --track-movement --track-flux --track-density "$@" 
 

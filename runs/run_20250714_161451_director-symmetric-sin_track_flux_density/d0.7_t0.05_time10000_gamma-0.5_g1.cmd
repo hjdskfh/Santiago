@@ -1,4 +1,0 @@
-# Command executed on Mon Jul 14 16:14:51 -04 2025
-# Working directory: /Users/leabauer/Documents/code
-# Git commit: 5d58e7b589b9e2f11d92f134c724e09e11ba9468
-./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.05 --total-time 10000 --run-name runs/run_20250714_161451_director-symmetric-sin_track_flux_density/d0.7_t0.05_time10000_gamma-0.5_g1 --save-interval 20 --potential director-symmetric-sin --gamma -0.5 --g 1 --potential-lower 0.2 --potential-upper 0.8 --seed 837437 --track-movement --track-flux --track-density
