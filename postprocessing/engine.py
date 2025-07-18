@@ -805,7 +805,7 @@ def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, m
             profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
 
-def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method="kernel"):
+def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method=None):
     # Group keys by subfolder
     from collections import defaultdict
     folder_steps = defaultdict(list)
