@@ -45,6 +45,7 @@ double PotentialLower;
 double PotentialUpper;
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
+double X_min; // Minimum x value for potential functions (used in rescaling)
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -52,8 +53,7 @@ long int *MovingParticlesSteps; // Array to track which timesteps were recorded
 long int MovingParticlesSize; // Size of the tracking array
 int TrackMovement; // Flag: 1 = track movement, 0 = don't track
 
-// Function pointer for potential calculation
-double (*CalculateMoveProb)(int x, int y, int dir_x, int dir_y);
+// Movement probability is determined by CalculateMovementProbability, which uses PotentialTypeCode and director arguments.
 
 // Pre-calculated movement probability map
 double MoveProbMap[Lx][Ly];
@@ -165,29 +165,26 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
     return lower_bound + (func(x) - f_min) / (f_max - f_min) * (upper_bound - lower_bound);
 }
 
-// Movement probability function definitions
-double uneven_sin_function(double x, double gamma) {
-    return sin(x) + gamma * sin(2 * x);
-}
+
 
 // Wrapper functions for golden section search (captures gamma)
 static double uneven_sin_for_search(double x) {
-    return uneven_sin_function(x, Gamma);
+    return sin((x + X_min)) + Gamma * sin(2 * (x + X_min));
 }
 
 double shifted_uneven_sin_for_search(double x) {
     // Shifted version: G * (sin(x) + gamma * sin(2 * x)) + 0.5
-    return G * uneven_sin_function(x, Gamma) + 0.5;
+    return G * uneven_sin_for_search(x) + 0.5;
 }
 
 double symmetric_sin_for_search(double x) {
     // Symmetric version: G * sin(x) + 0.5
-    return G * sin(x) + 0.5;
+    return G * sin(x + X_min) + 0.5;
 }
 
 // Unified potential initialization function
 void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound) {
-    double x_max = golden_section_search(func, 0.0, M_PI, 1e-6);
+    double x_max = golden_section_search(func, 0.0, 2 * M_PI, 1e-6);
     if (x_max < 0.0 || x_max > 2 * M_PI) {
         fprintf(stderr, "[ERROR] Golden section search returned invalid x_max: %.6f\n", x_max);
         exit(1);
@@ -201,6 +198,9 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
         double val = func(x);
         if (val < f_min) f_min = val;
     }
+    // Set X_min to the minimum x value where the function is defined
+    X_min = - x_max;
+    // Check if f_max and f_min are valid
     if (fabs(f_max - f_min) < 1e-12) {
         fprintf(stderr, "[ERROR] f_max == f_min (%.6f), division by zero avoided. Setting all MoveProbMap to 0.5.\n", f_max);
         for (int x = 0; x < Lx; x++) {
@@ -223,7 +223,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
             }
         }
     }
-    PrintMoveProbMap(150,170,0,4);
+    // PrintMoveProbMap(150,170,0,4);
     fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", PotentialType, lower_bound, upper_bound);
 }
 
@@ -243,47 +243,51 @@ void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound) {
 
 
 // Simple function to calculate movement probability based on potential type
-double CalculateMovementProbability(int x, int y, int dir_x, int dir_y) {
-    (void)dir_x;
-
+// Calculate movement probability for a given site and direction.
+// Uses PotentialTypeCode and director arguments. Checks array bounds for safety.
+double CalculateMovementProbability(const int x, const int y, const int dir_x, const int dir_y) {
+    // Array bounds check
+    (void) dir_x; // dir_x is not used in this function, but kept for compatibility
+    if (x < 0 || x >= Lx || y < 0 || y >= Ly) {
+        fprintf(stderr, "[ERROR] CalculateMovementProbability: x/y out of bounds (%d,%d)\n", x, y);
+        exit(1);
+    }
+    double prob = 1.0;
     switch (PotentialTypeCode) {
         case 0: // "default"
-            return 1.0;
-
+            prob = 1.0;
+            break;
         case 1: // "uneven-sin"
             if (!MoveProbMapInitialized) {
                 InitializeMoveProbMap();
             }
-            return MoveProbMap[x][y];
-
-        case 2: // "director-uneven-sin" 
-            if (dir_y != 0) {
-                return 0.5;
-            } else {
-                if (!MoveProbMapInitialized) {
-                    InitializeMoveProbMap();
-                }
-                return MoveProbMap[x][y];
-            }
-
+            prob = MoveProbMap[x][y];
+            break;
+        case 2: // "director-uneven-sin"
         case 3: // "director-symmetric-sin"
             if (dir_y == 0) {
-                return 0.5;
+                prob = 0.5;
             } else {
                 if (!MoveProbMapInitialized) {
                     InitializeMoveProbMap();
                 }
                 if (dir_y > 0) {
-                    return MoveProbMap[x][y];
+                    prob = MoveProbMap[x][y];
                 } else { // dir_y < 0
-                    return 1 - MoveProbMap[x][y]; // MoveProbMap[x][y] + 2 * (0.5 - MoveProbMap[x][y]); or MoveProbMap[x][y] - 2 * (MoveProbMap[x][y] - 0.5);
+                    prob = 1 - MoveProbMap[x][y];
                 }
             }
-
+            break;
         default:
             fprintf(stderr, "Error: Unknown PotentialTypeCode %d\n", PotentialTypeCode);
             exit(1);
     }
+    // NaN/Inf check
+    if (isnan(prob) || isinf(prob)) {
+        fprintf(stderr, "[ERROR] Movement probability is NaN/Inf at (%d,%d): %f\n", x, y, prob);
+        exit(1);
+    }
+    return prob;
 }
 
 // Initialize the movement probability map based on potential type
@@ -324,30 +328,17 @@ void SetPotentialFunction(const char* potential_type) {
     // Cache potential type as integer for faster comparisons
     if (strcmp(potential_type, "default") == 0) {
         PotentialTypeCode = 0;
-        CalculateMoveProb = CalculateMovementProbability;
         return;
     } else if (strcmp(potential_type, "uneven-sin") == 0) {
         PotentialTypeCode = 1;
-        CalculateMoveProb = CalculateMovementProbability;
         return;
     } else if (strcmp(potential_type, "director-uneven-sin") == 0) {
         PotentialTypeCode = 2;
-        CalculateMoveProb = CalculateMovementProbability;
         return;
     } else if (strcmp(potential_type, "director-symmetric-sin") == 0) {
         PotentialTypeCode = 3;
-        CalculateMoveProb = CalculateMovementProbability;
         return;
     }
-    
-    // Check if potential type exists in registry (for extensibility)
-    for (int i = 0; POTENTIAL_REGISTRY[i].name != NULL; i++) {
-        if (strcmp(potential_type, POTENTIAL_REGISTRY[i].name) == 0) {
-            CalculateMoveProb = CalculateMovementProbability;
-            return;
-        }
-    }
-    
     // If we get here, the potential type was not found
     fprintf(stderr, "Error: Unknown movement probability type '%s'\n", potential_type);
     exit(1);
@@ -606,6 +597,10 @@ void Iterate(long int step){
         if (rand_buffer) free(rand_buffer);
         rand_buffer_size = needed_randoms * 2;
         rand_buffer = (double*)malloc(rand_buffer_size * sizeof(double));
+        if (!rand_buffer) {
+            fprintf(stderr, "[ERROR] Could not allocate rand_buffer\n");
+            exit(1);
+        }
     }
     for (long int i = 0; i < needed_randoms; i++) {
         rand_buffer[i] = drand48();
@@ -628,18 +623,7 @@ void Iterate(long int step){
         if (dir_x != 0) {
             int inew = (icurrent + dir_x + Lx) % Lx;
             if (Occupancy[inew][jcurrent] < nmax) {
-                double prob_x;
-                if (PotentialTypeCode == 0) {
-                    prob_x = 1.0;
-                } else if (PotentialTypeCode == 2 && dir_y != 0) {
-                    prob_x = 0.5;
-                } else {
-                    if (!MoveProbMapInitialized) {
-                        InitializeMoveProbMap();
-                    }
-                    prob_x = MoveProbMap[inew][jcurrent];
-                }
-                
+                double prob_x = CalculateMovementProbability(inew, jcurrent, dir_x, dir_y);
                 if (rand_buffer[rand_idx++] < prob_x) {
                     Occupancy[icurrent][jcurrent]--;
                     CalculatedDensity[icurrent]--; // Decrease density for old site
@@ -654,23 +638,12 @@ void Iterate(long int step){
                 rand_idx++; // Skip the random number we would have used
             }
         }
-        
+
         // Try Y movement second (independent of X movement result)
         if (dir_y != 0) {
             int jnew = (jcurrent + dir_y + Ly) % Ly;
             if (Occupancy[icurrent][jnew] < nmax) {
-                double prob_y;
-                if (PotentialTypeCode == 0) {
-                    prob_y = 1.0;
-                } else if (PotentialTypeCode == 2 && dir_x != 0) {
-                    prob_y = 0.5;
-                } else {
-                    if (!MoveProbMapInitialized) {
-                        InitializeMoveProbMap();
-                    }
-                    prob_y = MoveProbMap[icurrent][jnew];
-                }
-                
+                double prob_y = CalculateMovementProbability(icurrent, jnew, dir_x, dir_y);
                 if (rand_buffer[rand_idx++] < prob_y) {
                     Occupancy[icurrent][jcurrent]--;
                     CalculatedDensity[icurrent]--; // Decrease density for old site
@@ -684,7 +657,7 @@ void Iterate(long int step){
             } else {
                 rand_idx++; // Skip the random number we would have used
             }
-        }	
+        }
 
         // Do tumble with probability TumbRate
         if(rand_buffer[rand_idx++] < TumbRate)
@@ -719,6 +692,12 @@ void Iterate(long int step){
     if (step % 3000 == 0) {
         fprintf(stderr, "Step %ld\n", step);
     }
+    // Free rand_buffer at the end of simulation (step == TotalTime)
+    if (step == TotalTime && rand_buffer) {
+        free(rand_buffer);
+        rand_buffer = NULL;
+        rand_buffer_size = 0;
+    }
 }
 
 void WriteConfig(long int index, bool track_occupancy, bool track_density, bool track_flux)
@@ -732,50 +711,60 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     if (track_occupancy) {
         sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
         f=fopen(filename,"w");
-        for(j=0;j<Ly;j++) {
-            for(i=0;i<Lx;i++)
-                fprintf(f,"%d ",Occupancy[i][j]);
-            fprintf(f,"\n");
+        if (!f) {
+            fprintf(stderr, "[ERROR] Could not open %s for writing occupancy\n", filename);
+        } else {
+            for(j=0;j<Ly;j++) {
+                for(i=0;i<Lx;i++)
+                    fprintf(f,"%d ",Occupancy[i][j]);
+                fprintf(f,"\n");
+            }
+            fclose(f);
         }
-        fclose(f);
     }
-    
     // Write density
     if (track_density) {
-        // Write the X movement flux matrix (raw accumulated values)
         sprintf(filename,"%s/Density_%ld.dat",RunName,index);
         f=fopen(filename,"w");
-        for(i=0;i<Lx;i++)
-        {  
-            fprintf(f,"%.3f ", (double)CalculatedDensity[i] / Ly);
+        if (!f) {
+            fprintf(stderr, "[ERROR] Could not open %s for writing density\n", filename);
+        } else {
+            for(i=0;i<Lx;i++)
+            {  
+                fprintf(f,"%.3f ", (double)CalculatedDensity[i] / Ly);
+            }
+            fclose(f);
         }
-        fclose(f);
     }
-    
-
     // Write MovingParticles
     if (track_flux) {
-        // Write the X movement flux matrix (raw accumulated values)
         sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
         f=fopen(filename,"w");
-        for(j=0;j<Ly;j++)
-        {
-            for(i=0;i<Lx;i++)
+        if (!f) {
+            fprintf(stderr, "[ERROR] Could not open %s for writing flux\n", filename);
+        } else {
+            for(j=0;j<Ly;j++)
             {
-                fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
+                for(i=0;i<Lx;i++)
+                {
+                    fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
+                }
+                fprintf(f,"\n");
             }
-            fprintf(f,"\n");
+            fclose(f);
         }
-        fclose(f);
     }
-    
     // Write the particle coordinates and directors
     if (index == -1 || index == 0) {
         sprintf(filename,"%s/Config_%ld.dat",RunName,index);
         f=fopen(filename,"w");
-        for(n=0;n<NParticles;n++)
-            fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
-        fclose(f);
+        if (!f) {
+            fprintf(stderr, "[ERROR] Could not open %s for writing config\n", filename);
+        } else {
+            for(n=0;n<NParticles;n++)
+                fprintf(f,"%ld %d %d %d %d\n",n,PosX[n],PosY[n],DirectorX[n],DirectorY[n]);
+            fclose(f);
+        }
     }
 }
 
@@ -1006,14 +995,13 @@ int main(int argc, char **argv)
 {
     long int step;
     SimulationParams params;
-    
+
     // Parse command line arguments
     int parse_result = ParseArguments(argc, argv, &params);
     if (parse_result <= 0) {
         return (parse_result == 0) ? 0 : 1; // 0 for help, 1 for error
     }
 
-    
     // Copy parameters to global variables (for compatibility with existing code)
     Density = params.density;
     TumbRate = params.tumb_rate;
@@ -1027,68 +1015,63 @@ int main(int argc, char **argv)
     G = params.g;
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
-    
+    X_min = 0;
+
     // Initialize the simulation (pass seed from params)
     InitialCondition(params.seed);
-    
 
     // Set the potential function
     SetPotentialFunction(PotentialType);
-    
+
     // Create the output directory
     if(mkdir(RunName, 0755) != 0 && errno != EEXIST)
     {
         fprintf(stderr,"Error: Could not create directory '%s'\n", RunName);
         return 1;
     }
-    
+
     // Compute the number of particles (may be overridden if loading from file)
     NParticles=(int)(Density*Lx*Ly);
-    
+
     fprintf(stderr,"Run name: %s\n", RunName);
     fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",
-    Density,NParticles,TumbRate,TotalTime);
+        Density,NParticles,TumbRate,TotalTime);
     fprintf(stderr,"Movement probability type: %s, Gamma: %.3f, G: %.3f, Save interval: %ld\n", 
-    PotentialType, Gamma, G, SaveInterval);
+        PotentialType, Gamma, G, SaveInterval);
     fprintf(stderr,"Movement tracking: %s%s\n", 
-    TrackMovement ? "enabled" : "disabled",
-    (TrackMovement && SaveInterval > 0) ? "" : (TrackMovement ? " (but SaveInterval=0, so disabled)" : ""));
+        TrackMovement ? "enabled" : "disabled",
+        (TrackMovement && SaveInterval > 0) ? "" : (TrackMovement ? " (but SaveInterval=0, so disabled)" : ""));
     fprintf(stderr,"Output options: Occupancy=%s, Density=%s, Flux=%s\n",
-    params.track_occupancy ? "enabled" : "disabled",
-    params.track_density ? "enabled" : "disabled", 
-    params.track_flux ? "enabled" : "disabled");
-        
-    // Initialize the simulation
-    InitialCondition(params.seed);
-    
+        params.track_occupancy ? "enabled" : "disabled",
+        params.track_density ? "enabled" : "disabled", 
+        params.track_flux ? "enabled" : "disabled");
+
     // Initialize movement tracking
     InitializeMovementTracking(TotalTime);
-    
+
     // Print actual density after initialization
     fprintf(stderr,"Actual Parameters: NParticles %ld, Density %lf\n",
-    NParticles,(1.0*NParticles)/(Lx*Ly));
-    
+        NParticles,(1.0*NParticles)/(Lx*Ly));
+
     WriteConfig(-1, params.track_occupancy, params.track_density, params.track_flux);
-    
+
     //Loop
     for(step=1;step<=TotalTime;step++)
     {
-        
         if(step%3000==0)
             fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
         Iterate(step);
-        
+
         // Save intermediate steps if save interval is specified
         if(SaveInterval > 0 && step % SaveInterval == 0) {
-
             WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
         }
     }
     WriteConfig(TotalTime, params.track_occupancy, params.track_density, params.track_flux);
-    
+
     // Write movement statistics before cleanup
     WriteMovementStats();
-    
+
     // Cleanup movement tracking if allocated
     CleanupMovementTracking();
 

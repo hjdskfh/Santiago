@@ -589,7 +589,7 @@ def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, sta
     else:
         print("No valid average profiles found for the given timestep.")
 
-def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method="kernel"):
+def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None):
     profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method)
     if not profiles_by_step:
         print("No profiles found for the selected steps.")

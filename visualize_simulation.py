@@ -246,7 +246,7 @@ if __name__ == "__main__":
             except ValueError:
                 print("Invalid input. Please enter integers separated by commas or a range like 1000 to 5000 in steps of 50.")
 
-        kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)): ").strip().lower()
+        kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
         print(f"Calculating density derivatives using method: {kind_of_derivative}")
         # do you want to smooth it?
         smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
@@ -263,8 +263,13 @@ if __name__ == "__main__":
         
         os.makedirs(os.path.dirname(save_dir), exist_ok=True)
 
-
-        analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
+        if kind_of_derivative == 'both':
+            print("Calculating both Gaussian kernel and finite difference derivatives.")
+            analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method='kernel')
+            analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method='diff')
+        else:
+            print(f"Calculating {kind_of_derivative} density derivatives.")
+            analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
     
     # End to measure execution time
     end_time = time.time()

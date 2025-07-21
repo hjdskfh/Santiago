@@ -739,7 +739,7 @@ def nw_second_derivative(x_eval, x_train, y_train, mu):
         d2y_pred.append(num / denom)
     return np.array(d2y_pred)
 
-def compute_density_derivatives(profile, mu=None, smooth=True, method="kernel"):
+def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
     x = np.arange(len(profile))
     if mu is None:
         mu = np.std(profile)
@@ -759,7 +759,7 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method="kernel"):
 
     return smoothed, first_deriv, second_deriv
 
-def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method="kernel"):
+def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
     import bisect
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
@@ -800,7 +800,7 @@ def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, m
                 continue
             avg_profile = np.mean(profiles, axis=0)
             print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
-            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method="kernel")
+            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
             # Key by (folder_name, step)
             profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
