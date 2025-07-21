@@ -212,47 +212,56 @@ if __name__ == "__main__":
         average_density_option_9(runs_dir=runs_dir, save_dir=save_dir, save_choice=save_choice, start_step=start_step, smooth_density=smooth_density)
 
     if mode_choice == '10':
-        while True:
-            try:
-                step_input = input("Enter the timesteps to analyze (e.g., 1000, 3000, 5000 or 1000 to 5000 in steps of 50): ").strip()
-                if 'to' in step_input and 'step' in step_input:
-                    # Accept format: 1000 to 5000 in steps of 50
-                    import re
-                    match = re.match(r"(\d+)\s*to\s*(\d+)\s*in steps of\s*(\d+)", step_input)
-                    if match:
-                        start = int(match.group(1))
-                        end = int(match.group(2))
-                        step_size = int(match.group(3))
-                        step_list = list(range(start, end + 1, step_size))
+        use_defaults = True  # Change to False if you want to re-enable input
+        if use_defaults:
+            step_list = list(range(1000, 5001, 7000))  # Example default steps
+            kind_of_derivative = 'both'
+            smooth_choice = 'y'
+            smooth_density = smooth_choice == 'y'
+            save_choice = 'y'
+            save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
+        else:
+            while True:
+                try:
+                    step_input = input("Enter the timesteps to analyze (e.g., 1000, 3000, 5000 or 1000 to 5000 in steps of 50): ").strip()
+                    if 'to' in step_input and 'step' in step_input:
+                        # Accept format: 1000 to 5000 in steps of 50
+                        import re
+                        match = re.match(r"(\d+)\s*to\s*(\d+)\s*in steps of\s*(\d+)", step_input)
+                        if match:
+                            start = int(match.group(1))
+                            end = int(match.group(2))
+                            step_size = int(match.group(3))
+                            step_list = list(range(start, end + 1, step_size))
+                        else:
+                            print("Invalid range format. Please use e.g. 1000 to 5000 in steps of 50.")
+                            continue
+                    elif 'to' in step_input:
+                        # Accept format: 1000 to 5000
+                        match = re.match(r"(\d+)\s*to\s*(\d+)", step_input)
+                        if match:
+                            start = int(match.group(1))
+                            end = int(match.group(2))
+                            step_list = list(range(start, end + 1, 1))
+                        else:
+                            print("Invalid range format. Please use e.g. 1000 to 5000.")
+                            continue
                     else:
-                        print("Invalid range format. Please use e.g. 1000 to 5000 in steps of 50.")
-                        continue
-                elif 'to' in step_input:
-                    # Accept format: 1000 to 5000
-                    match = re.match(r"(\d+)\s*to\s*(\d+)", step_input)
-                    if match:
-                        start = int(match.group(1))
-                        end = int(match.group(2))
-                        step_list = list(range(start, end + 1, 1))
+                        step_list = [int(s.strip()) for s in step_input.split(",") if s.strip()]
+                    if step_list:
+                        break
                     else:
-                        print("Invalid range format. Please use e.g. 1000 to 5000.")
-                        continue
-                else:
-                    step_list = [int(s.strip()) for s in step_input.split(",") if s.strip()]
-                if step_list:
-                    break
-                else:
-                    print("Please enter at least one timestep.")
-            except ValueError:
-                print("Invalid input. Please enter integers separated by commas or a range like 1000 to 5000 in steps of 50.")
+                        print("Please enter at least one timestep.")
+                except ValueError:
+                    print("Invalid input. Please enter integers separated by commas or a range like 1000 to 5000 in steps of 50.")
 
-        kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
-        print(f"Calculating density derivatives using method: {kind_of_derivative}")
-        # do you want to smooth it?
-        smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
-        smooth_density = smooth_choice == 'y'
+            kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
+            print(f"Calculating density derivatives using method: {kind_of_derivative}")
+            # do you want to smooth it?
+            smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
+            smooth_density = smooth_choice == 'y'
 
-        save_choice = input("Save comparison grid to file? (y/n): ").strip().lower()
+        save_choice = 'y'
         title_steps = "steps_" + "_".join(map(str, step_list))
         if save_choice == 'y' and smooth_choice == 'y':
             # Create a directory for saving the averaged density profiles

@@ -14,8 +14,8 @@ echo "Starting parameter sweep..."
 echo "Available options: --track-movement, --track-flux, --track-density, --move-prob TYPE"
 echo ""
 
-# Assumption for Potential X_min = -X_max for X_max determined in [0,2*pi] and only input lower and upperbound symmetric around 0.5
+# Assumption for Potential: only input lower and upperbound symmetric around 0.5, maximum at 0
 # Run the initialization script with the new flags
-# Modify the line below to customize your run #director-uneven-sin
+# Modify the line below to customize your run #uneven-sin, director-uneven-sin, director-symmetric-sin
 time ./run_4_potential.sh --move-prob director-symmetric-sin --track-movement --track-flux --track-density "$@" 
 

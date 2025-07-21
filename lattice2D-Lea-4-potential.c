@@ -45,7 +45,7 @@ double PotentialLower;
 double PotentialUpper;
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
-double X_min; // Minimum x value for potential functions (used in rescaling)
+double X_max; // Minimum x value for potential functions (used in rescaling)
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -82,6 +82,7 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
 static double uneven_sin_for_search(double x);
 static double shifted_uneven_sin_for_search(double x);
 
+// Debug function to print MoveProbMap values to terminal
 // Debug function to print MoveProbMap values to terminal
 void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y) {
     if (!MoveProbMapInitialized) {
@@ -169,7 +170,7 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
 
 // Wrapper functions for golden section search (captures gamma)
 static double uneven_sin_for_search(double x) {
-    return sin((x + X_min)) + Gamma * sin(2 * (x + X_min));
+    return sin((x + X_max)) + Gamma * sin(2 * (x + X_max));
 }
 
 double shifted_uneven_sin_for_search(double x) {
@@ -179,7 +180,7 @@ double shifted_uneven_sin_for_search(double x) {
 
 double symmetric_sin_for_search(double x) {
     // Symmetric version: G * sin(x) + 0.5
-    return G * sin(x + X_min) + 0.5;
+    return G * sin(x + X_max) + 0.5;
 }
 
 // Unified potential initialization function
@@ -198,8 +199,8 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
         double val = func(x);
         if (val < f_min) f_min = val;
     }
-    // Set X_min to the minimum x value where the function is defined
-    X_min = - x_max;
+    // Set X_max to the maximum x value where the function is defined, so the maximum is at 0
+    X_max = x_max;
     // Check if f_max and f_min are valid
     if (fabs(f_max - f_min) < 1e-12) {
         fprintf(stderr, "[ERROR] f_max == f_min (%.6f), division by zero avoided. Setting all MoveProbMap to 0.5.\n", f_max);
@@ -223,7 +224,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
             }
         }
     }
-    // PrintMoveProbMap(150,170,0,4);
+    PrintMoveProbMap(0,200,0,0);
     fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", PotentialType, lower_bound, upper_bound);
 }
 
@@ -1015,7 +1016,10 @@ int main(int argc, char **argv)
     G = params.g;
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
-    X_min = 0;
+    X_max = 0;
+
+    // Compute the number of particles (may be overridden if loading from file)
+    NParticles=(int)(Density*Lx*Ly);
 
     // Initialize the simulation (pass seed from params)
     InitialCondition(params.seed);
@@ -1029,9 +1033,6 @@ int main(int argc, char **argv)
         fprintf(stderr,"Error: Could not create directory '%s'\n", RunName);
         return 1;
     }
-
-    // Compute the number of particles (may be overridden if loading from file)
-    NParticles=(int)(Density*Lx*Ly);
 
     fprintf(stderr,"Run name: %s\n", RunName);
     fprintf(stderr,"Parameters Density (input %lf), Target NParticles %ld, Tumbling rate %lf, TotalTime %ld\n",
