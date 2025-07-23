@@ -178,7 +178,7 @@ double shifted_uneven_sin_for_search(double x) {
 }
 
 double symmetric_sin_for_search(double x) {
-    // Symmetric version: G * sin(x) + 0.5
+    // Symmetric version: G * sin(x + X_max) + 0.5
     return G * sin(x + X_max) + 0.5;
 }
 
