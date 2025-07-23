@@ -27,7 +27,7 @@ int UnitY[4] = {0,1,0,-1};
 // Global dynamical arrays
 char Occupancy[Lx][Ly]; // Occupancy of each site
 int CalculatedDensity[Lx]; // Density count at each x position
-float XAccumulatedFlux[Lx][Ly]; // Flux of moving particles at each site
+int XAccumulatedFlux[Lx]; // Flux of moving particles at each site
 int PosX[MaxNPart],PosY[MaxNPart]; // Position of each particle
 int DirectorX[MaxNPart],DirectorY[MaxNPart]; // Cartesian componenets of the director for each particle
 long int ParticleOrder[MaxNPart]; // Order in which particles are updated
@@ -118,7 +118,7 @@ void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y) {
 
 // Convenience function to print a sample of the map
 void PrintMoveProbMapSample(void) {
-    PrintMoveProbMap(0, 9, 0, 4);  // Print first 10x5 region for easier debugging
+    // PrintMoveProbMap(0, 9, 0, 4);  // Print first 10x5 region for easier debugging
     // Print a few values directly for NaN/Inf check
     for (int x = 0; x < 10; x++) {
         for (int y = 0; y < 5; y++) {
@@ -165,7 +165,6 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
     }
     return lower_bound + (func(x) - f_min) / (f_max - f_min) * (upper_bound - lower_bound);
 }
-
 
 
 // Wrapper functions for golden section search (captures gamma)
@@ -224,7 +223,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
             }
         }
     }
-    PrintMoveProbMap(0,200,0,0);
+    // PrintMoveProbMap(0,200,0,0);
     fprintf(stderr, "Initialized %s potential map with bounds [%.3f, %.3f]\n", PotentialType, lower_bound, upper_bound);
 }
 
@@ -519,7 +518,7 @@ void InitialCondition(long int seed){
             {
                 Occupancy[i][j] = 0;	
                 CalculatedDensity[i] = 0; // Initialize density array
-                XAccumulatedFlux[i][j] = 0; // Initialize flux matrix
+                XAccumulatedFlux[i] = 0; // Initialize flux matrix
             }
         
         // Load occupancy from file
@@ -543,7 +542,7 @@ void InitialCondition(long int seed){
             {
                 Occupancy[i][j]=0;
                 CalculatedDensity[i] = 0; // Initialize density array
-                XAccumulatedFlux[i][j]=0; // Initialize flux matrix
+                XAccumulatedFlux[i]=0; // Initialize flux matrix
             }
         
     #if (WALL==1)
@@ -633,7 +632,7 @@ void Iterate(long int step){
                     CalculatedDensity[icurrent]++; // Increase density for new site
                     PosX[particle_id] = icurrent;
                     moving_particles_this_step++; // Increment counter for moving particles
-                    XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
+                    XAccumulatedFlux[icurrent] += (dir_x > 0) ? 1 : -1;
                 }
             } else {
                 rand_idx++; // Skip the random number we would have used
@@ -653,7 +652,7 @@ void Iterate(long int step){
                     CalculatedDensity[icurrent]++; // Increase density for new site
                     PosY[particle_id] = jcurrent;
                     moving_particles_this_step++; // Increment counter for moving particles
-                    XAccumulatedFlux[icurrent][jcurrent] += (dir_x > 0) ? 1 : -1;
+                    XAccumulatedFlux[icurrent] += (dir_x > 0) ? 1 : -1;
                 }
             } else {
                 rand_idx++; // Skip the random number we would have used
@@ -709,7 +708,7 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     long int n;
 
     // Write the occupancy matrix
-    if (track_occupancy) {
+    if (track_occupancy && (index == TotalTime || index == -1 || index == 0)) {
         sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
@@ -738,20 +737,18 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         }
     }
     // Write MovingParticles
-    if (track_flux) {
+    if (track_flux && (index == TotalTime || index == -1 || index == 0)) {
         sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
             fprintf(stderr, "[ERROR] Could not open %s for writing flux\n", filename);
         } else {
-            for(j=0;j<Ly;j++)
+            for(i=0;i<Lx;i++)
             {
-                for(i=0;i<Lx;i++)
-                {
-                    fprintf(f,"%.3f ",XAccumulatedFlux[i][j]);
-                }
-                fprintf(f,"\n");
+                fprintf(f,"%.3f ",(double)XAccumulatedFlux[i] / (Ly*TotalTime));
             }
+            fprintf(f,"\n");
+        
             fclose(f);
         }
     }

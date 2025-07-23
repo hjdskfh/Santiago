@@ -214,7 +214,7 @@ if __name__ == "__main__":
     if mode_choice == '10':
         use_defaults = True  # Change to False if you want to re-enable input
         if use_defaults:
-            step_list = list(range(1000, 5001, 7000))  # Example default steps
+            step_list = list(range(1000, 50001, 7000))  # Example default steps
             kind_of_derivative = 'both'
             smooth_choice = 'y'
             smooth_density = smooth_choice == 'y'

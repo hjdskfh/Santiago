@@ -10,7 +10,7 @@ from postprocessing.engine import create_discrete_colormap, find_files_in_direct
     load_occupancy_data, extract_parameters_from_folder, process_folder_for_sweep, \
     create_comparison_grid, create_density_evolution_comparison_grid, \
     create_individual_movement_plot, create_combined_movement_plots, \
-    compute_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid
+    compute_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid, nw_kernel_regression
 
 
 def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False, save_dir=None):
@@ -526,7 +526,7 @@ def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, sta
                 y_train = avg_profile
                 x_train = np.arange(len(avg_profile))
                 x_eval = x_train
-                avg_profile = smoothing_nadaraya_watson_kernel_regression(y_train, x_train, x_eval, mu)
+                avg_profile = nw_kernel_regression(x_eval, x_train, y_train, mu)
             # Extract parameters
             dir_name = os.path.basename(folder)
             density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
@@ -590,7 +590,7 @@ def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, sta
         print("No valid average profiles found for the given timestep.")
 
 def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None):
-    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method)
+    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method, kind_computing="density")
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return

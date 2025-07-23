@@ -21,3 +21,14 @@ def kernel_second_derivative(x, mu):
 def quotient_rule(nominator, denominator, dN, dD):
     return (dN * denominator- nominator* dD) / (denominator ** 2)
 
+def find_all_roots(f, x_min, x_max, steps=1000):
+    x = np.linspace(x_min, x_max, steps)
+    roots = []
+    for i in range(steps - 1):
+        if f(x[i]) * f(x[i + 1]) < 0:  # Sign change
+            try:
+                root = brentq(f, x[i], x[i + 1])
+                roots.append(root)
+            except ValueError:
+                pass
+    return roots

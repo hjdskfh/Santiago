@@ -6,9 +6,11 @@ from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime
 import shlex
+from scipy.integrate import quad
+from scipy.optimize import brentq
 
 from postprocessing.helper import kernel_function, kernel_derivative, kernel_second_derivative, \
-    quotient_rule
+    quotient_rule, find_all_roots
 
 def create_discrete_colormap(max_val):
     """
@@ -759,7 +761,7 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
 
     return smoothed, first_deriv, second_deriv
 
-def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
+def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None, kind_computing=None):
     import bisect
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
@@ -767,7 +769,12 @@ def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, m
     # Pre-index all available density files per folder
     folder_step_map = {}
     for folder in folders:
-        density_files = [f for f in os.listdir(folder) if f.startswith("Density_") and f.endswith(".dat")]
+        if kind_computing == "density":
+            density_files = [f for f in os.listdir(folder) if f.startswith("Density_") and f.endswith(".dat")]
+        elif kind_computing == "flux":
+            density_files = [f for f in os.listdir(folder) if f.startswith("XAccumulatedFlux_") and f.endswith(".dat")]
+        else:
+            raise ValueError(f"Unknown kind_computing '{kind_computing}', expected 'density' or 'flux'")
         steps = []
         file_map = {}
         for f in density_files:
@@ -843,3 +850,76 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
             print(f"Density derivative grid saved to: {save_path}")
         else:
             plt.show()
+
+
+# ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
+def compute_gamma_lambda(runs_dir, method='kernel', start_averaging_step=0, x_min = 0, x_max = 200):
+    """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
+    gam_exp = []
+    lam_exp = []
+    erf_exp = []
+    cov_exp = []
+
+    rho_min = 1
+    rho_max = 1.75
+    rho_est_arr = np.linspace(rho_min, rho_max, 5)
+
+    print("sim", "|" , "gamma", "|" , "lambda")
+
+    for i in range(len(rho_exp)):       
+        # calculate rho and its derivatives
+        steps_to_include = start_averaging_step
+        profiles_by_step_density = compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, kind_computing="density")
+        _, value_density = next(iter(profiles_by_step_density.items()))
+        rho_exp, d_rho_exp, d2_rho_exp = value_density
+
+        # Todo:calculate J
+        profiles_by_step_flux = compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, kind_computing="flux")
+        _, value_flux = next(iter(profiles_by_step_flux.items()))
+        J_exp, _, _ = value_flux
+
+        A = []
+        B = []
+        erf = []
+
+        for rho_est in rho_est_arr:
+            rho_moved = rho_exp - rho_est
+            rho_moved_interp = interp1d(np.linspace(0,200,len(rho_moved)), rho_moved, kind='cubic')
+            J_div_rho = J_exp / rho_exp
+
+            # determination of integration limits
+            roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
+            a = roots[0] if len(roots) > 0 else x_min
+            b = roots[1] if len(roots) > 0 else x_max
+
+            plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
+            plt.show()
+
+            # integrals for current
+            integral_j, err = quad(J_div_rho, a, b)
+            # Todo:integrals for Potential
+            integral_rho_g, err = 0, 0
+
+            # values of A and B
+            a0 = -(d2_rho_exp(b) - d2_rho_exp(a))
+            a1 = (d_rho_exp(b) ** 2 - d_rho_exp(a) ** 2)
+            b = -integral_j - integral_rho_g
+            A.append([a0[0], a1[0]])
+            B.append(b)
+        
+        A = np.array(A)
+        B = np.array(B)
+
+        U, s, Vh = svd(A, full_matrices=False)
+
+        gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
+        gam_exp.append(round(gam, 2))
+        lam_exp.append(round(lam, 2))
+
+
+        cov = Vh @ np.diag(1 / s**2) @ Vh.T
+        cov_exp.append(cov)
+        erf = B - A@[gam, lam]
+        erf_exp.append(erf)
+
+        print(i, "|" , gam, "|" , lam, 2)
