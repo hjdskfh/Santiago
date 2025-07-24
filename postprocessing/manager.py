@@ -7,13 +7,14 @@ import re
 from datetime import datetime
 from scipy.interpolate import interp1d
 from scipy.integrate import quad
+from scipy.linalg import svd
 
 from postprocessing.engine import create_discrete_colormap, find_files_in_directory, \
     load_occupancy_data, extract_parameters_from_folder, process_folder_for_sweep, \
     create_comparison_grid, create_density_evolution_comparison_grid, \
     create_individual_movement_plot, create_combined_movement_plots, \
     compute_density_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid, \
-    nw_kernel_regression, compute_flux_profiles_by_step, check_if_at_integration_points_equal
+    nw_kernel_regression, compute_flux_profiles_by_step, check_if_at_integration_points_equal, matchup_tumble_rates
 
 from postprocessing.helper import find_all_roots
 
@@ -505,6 +506,7 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
 def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_averaging_step=0, x_min = 0, x_max = 200):
+    
     """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
     gam_exp = []
     lam_exp = []
@@ -517,76 +519,104 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
 
     print("sim", "|" , "gamma", "|" , "lambda")
 
-    # only for several simulations for i in range(len(rho_exp)):    
+    # calculate index reference from main to one particle run directory to know which J_exp and which rho_exp to use
+    # length = amount of folders in runs_dir, values are indices of runs_dir_one_particle
+    index_reference = matchup_tumble_rates(runs_dir, runs_dir_one_particle)
     # calculate rho and its derivatives
     steps_to_include = start_averaging_step
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
-    _, value_density = next(iter(profiles_by_step_density.items()))
-    rho_exp, d_rho_exp, d2_rho_exp = value_density
-    plt.plot(rho_exp, label="rho_exp")
-    plt.legend()
-    plt.show()
+    
     # calculate J
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
-    _, J_exp = next(iter(profiles_by_step_flux.items()))
-    print(f"J_exp: {J_exp.shape}")
-    print(f"J_exp: {J_exp}")
 
-    A = []
-    B = []
-    erf = []
+    # get - integral J/x for case for only one particle
+    step_to_include_one = 0
+    profiles_by_step_density_one = compute_density_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
+    profiles_by_step_flux_one = compute_flux_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
+    
 
-    for rho_est in rho_est_arr:
-        x_grid = np.linspace(0, 200, len(rho_exp))
-        rho_moved = rho_exp - rho_est
-        rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
-        J_div_rho = J_exp / rho_exp
 
-        # determination of integration limits
-        roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
-        print(f"Roots found: {roots}")
-        plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
-        plt.show()
-        a = roots[0] if len(roots) > 0 else x_min
-        b = roots[1] if len(roots) > 0 else x_max
-
-        # Suppose x_grid is the grid of x values (e.g., np.linspace(0, 200, len(d_rho_exp)))
-        d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
-        d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
-
-        check_if_at_integration_points_equal(d_rho_exp_func, a, b)
-        check_if_at_integration_points_equal(d2_rho_exp_func, a, b)
-
-        plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
+    for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
+        # which folder of one particle for this run to use
+        index_one = index_reference[idx]
+        print(f"Index reference for run {idx}: {index_one}")
+        # Debug: print lengths and keys of one-particle profiles
+        print(f"profiles_by_step_density_one has {len(profiles_by_step_density_one)} entries")
+        print(f"profiles_by_step_flux_one has {len(profiles_by_step_flux_one)} entries")
+        print(f"profiles_by_step_density_one keys: {list(profiles_by_step_density_one.keys())}")
+        print(f"profiles_by_step_flux_one keys: {list(profiles_by_step_flux_one.keys())}")
+        print(f"Trying to access index_one={index_one}")
+        # load data for this simulation run
+        # key is (folder_name, step)
+        rho_exp, d_rho_exp, d2_rho_exp = value_density
+        print(f"rho_exp: {rho_exp.shape}")
+        plt.plot(rho_exp, label="rho_exp")
         plt.legend()
         plt.show()
 
-        # integrals for current
-        J_div_rho_func = interp1d(x_grid, J_div_rho, kind='cubic', fill_value="extrapolate")
-        integral_j, err = quad(J_div_rho_func, a, b)
-        # ToDo: integrals for Potential
-        integral_rho_g, err = 0, 0
+        print(f"For run number {idx} key for density {key_density} is used")
+        J_exp = list(profiles_by_step_flux.values())[idx]  # Get J for the same key
+        print(f"For run number {idx} key for flux {list(profiles_by_step_flux.keys())[idx]} is used")
+        rho_exp_one, d_rho_exp_one, d2_rho_exp_one = list(profiles_by_step_density_one.values())[index_one]  # Get rho for the same key
+        J_exp_one = list(profiles_by_step_flux_one.values())[index_one]  # Get J for the same key
 
-        # values of A and B
-        a0 = -(d2_rho_exp(b) - d2_rho_exp(a))
-        a1 = (d_rho_exp(b) ** 2 - d_rho_exp(a) ** 2)
-        b = -integral_j - integral_rho_g
-        A.append([a0[0], a1[0]])
-        B.append(b)
-    
-    A = np.array(A)
-    B = np.array(B)
+        A = []
+        B = []
+        erf = []
 
-    U, s, Vh = svd(A, full_matrices=False)
+        for rho_est in rho_est_arr:
+            x_grid = np.linspace(0, 200, len(rho_exp))
+            rho_moved = rho_exp - rho_est
+            rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
+            J_div_rho = J_exp / rho_exp
+            J_div_rho_one = J_exp_one / rho_exp_one
 
-    gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
-    gam_exp.append(round(gam, 2))
-    lam_exp.append(round(lam, 2))
+            # determination of integration limits
+            roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
+            print(f"Roots found: {roots}")
+            plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
+            plt.show()
+            a = roots[0] if len(roots) > 0 else x_min
+            b = roots[1] if len(roots) > 0 else x_max
+
+            # Suppose x_grid is the grid of x values (e.g., np.linspace(0, 200, len(d_rho_exp)))
+            d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
+            d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
+
+            check_if_at_integration_points_equal(d_rho_exp_func, a, b)
+            check_if_at_integration_points_equal(d2_rho_exp_func, a, b)
+
+            plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
+            plt.legend()
+            plt.show()
+
+            # integrals for current
+            J_div_rho_func = interp1d(x_grid, J_div_rho, kind='cubic', fill_value="extrapolate")
+            integral_j, err = quad(J_div_rho_func, a, b)
+            J_div_rho_one_func = interp1d(x_grid, J_div_rho_one, kind='cubic', fill_value="extrapolate")
+            integral_j_one, err = quad(J_div_rho_one_func, a, b)
+
+            # values of A and B
+            a0 = -(d2_rho_exp_func(b) - d2_rho_exp_func(a))
+            a1 = (d_rho_exp_func(b) ** 2 - d_rho_exp_func(a) ** 2)
+            # subtract the one particle current to eliminate potential influence
+            b = - integral_j - integral_j_one
+            A.append([a0, a1])
+            B.append(b)
+        
+        A = np.array(A)
+        B = np.array(B)
+
+        U, s, Vh = svd(A, full_matrices=False)
+
+        gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
+        gam_exp.append(round(gam, 2))
+        lam_exp.append(round(lam, 2))
 
 
-    cov = Vh @ np.diag(1 / s**2) @ Vh.T
-    cov_exp.append(cov)
-    erf = B - A@[gam, lam]
-    erf_exp.append(erf)
+        cov = Vh @ np.diag(1 / s**2) @ Vh.T
+        cov_exp.append(cov)
+        erf = B - A@[gam, lam]
+        erf_exp.append(erf)
 
-    print(i, "|" , gam, "|" , lam, 2)
+        print(idx, "|" , gam, "|" , lam, 2)

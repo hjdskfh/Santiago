@@ -270,12 +270,14 @@ if __name__ == "__main__":
                     step_input = input("Enter one timestep to analyze: ").strip()
                 except ValueError:
                     print("Invalid input. Please enter a valid timestep.")
+        
+        runs_dir_one_particle = input("Enter path to the runs_dir where only a single particle is simulated: ").strip()      
 
         save_dir = os.path.join(analysis_dir, f"results_gamma_lambda_{start_averaging_step}")
         
         os.makedirs(os.path.dirname(save_dir), exist_ok=True)
 
-        compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+        compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
         # Optionally run flux analysis after derivatives
         # analyze_fluxes_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None)
 

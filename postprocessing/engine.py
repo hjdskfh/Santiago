@@ -847,10 +847,17 @@ def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=No
             if not profiles:
                 print(f"[Warning] No profiles found for folder {folder_name} step {step}")
                 continue
+            if idx >= len(profiles):
+                print(f"[Warning] Not enough profiles for folder {folder_name} step {step} (profiles length: {len(profiles)}, idx: {idx})")
+                print(f"  steps: {steps}")
+                print(f"  steps[idx:]: {steps[idx:]}")
+                print(f"  files attempted: {[file_map[s] for s in steps[idx:]]}")
+                continue
             
             # dont compute average, but subtract contributions from before the starting step
             used_start_step = steps[idx] if idx < len(steps) else steps[-1]
-            start_step_profile = profiles[idx]
+            # get the starting step profile
+            start_step_profile = profiles[0]
             print(f"Using start step {used_start_step} for folder {folder_name} step {step}")
             end_step = steps[-1]
             final_profile = profiles[-1]  # Use the last profile as the representative one
@@ -873,3 +880,31 @@ def check_if_at_integration_points_equal(func, a, b, tol=1e-8):
         raise ValueError(f"Function values at integration points are too close: func({a})={val_a}, func({b})={val_b}")
     else:
         print(f"Function values at integration points are acceptable: func({a})={val_a}, func({b})={val_b}")
+
+def matchup_tumble_rates(runs_dir, runs_dir_one_particle):
+    # Get tumble rates of all subfolders in alphabetical (ls) order for one-particle dir
+    subfolders_one = [f for f in sorted(os.listdir(runs_dir_one_particle)) if os.path.isdir(os.path.join(runs_dir_one_particle, f))]
+    tumble_rates_one = []
+    for folder in subfolders_one:
+        _, tumble_rate, *_ = extract_parameters_from_folder(folder)
+        tumble_rates_one.append(tumble_rate)
+    print("Tumble rates in runs_dir_one_particle (ls/alphabetical) order:", tumble_rates_one)
+
+    # Get tumble rates of all subfolders in alphabetical (ls) order for main runs_dir
+    subfolders_main = [f for f in sorted(os.listdir(runs_dir)) if os.path.isdir(os.path.join(runs_dir, f))]
+    tumble_rates_main = []
+    for folder in subfolders_main:
+        _, tumble_rate, *_ = extract_parameters_from_folder(folder)
+        tumble_rates_main.append(tumble_rate)
+    print("Tumble rates in runs_dir (ls/alphabetical) order:", tumble_rates_main)
+
+    # For each tumble rate in main, find the index of the first matching tumble rate in one (allowing repeats)
+    index_reference = []
+    for tr_main in tumble_rates_main:
+        try:
+            idx = tumble_rates_one.index(tr_main)
+        except ValueError:
+            idx = -1  # or None, if you want to indicate not found
+        index_reference.append(idx)
+    print("Index reference from main to one-particle tumble rates:", index_reference)
+    return index_reference

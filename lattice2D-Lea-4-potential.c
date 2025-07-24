@@ -745,7 +745,7 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         } else {
             for(i=0;i<Lx;i++)
             {
-                fprintf(f,"%.6f ",(double)XAccumulatedFlux[i] / (Ly*TotalTime));
+                fprintf(f,"%.6f ",(double)XAccumulatedFlux[i] / (Ly*index));
             }
             fprintf(f,"\n");
         

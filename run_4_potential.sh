@@ -235,9 +235,9 @@ echo "Starting parameter sweep..."
 
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
-densities=(0.7 0.8 0.9)
+densities=(0.7 0.8 0.9) # (0.000125) # 
 tumble_rates=(0.07 0.08 0.09)
-total_time=300000
+total_time=10000
 start_tumble_rate=0.005
 
 # *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
