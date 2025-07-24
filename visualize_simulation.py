@@ -5,10 +5,11 @@ import glob
 from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime 
+import bisect
 
 from postprocessing.manager import create_parameter_sweep_visualization, \
     print_multiple_heatmaps, print_single_heatmap, visualize_time_evolution, \
-    print_moving_particles, visualize_density_evolution_stacked, average_density_option_9, analyze_density_derivatives_grid
+    print_moving_particles, visualize_density_evolution_stacked, analyze_density_derivatives_grid, compute_gamma_lambda
 
 
 if __name__ == "__main__":
@@ -58,16 +59,16 @@ if __name__ == "__main__":
 
     # Show options to user
     print("\nChoose visualization mode:")
-    print("1. Parameter sweep comparison grid (specific time step)")
-    print("2. Parameter sweep grids for ALL time steps")
-    print("3. View START configuration heatmaps")
-    print("4. View all heatmaps in directory") 
-    print("5. View single heatmap from file path")
-    print("6. View time evolution of single configuration")
-    print("7. Analyze movement statistics")
-    print("8. Create 2D stacked density evolution (1D profiles → 2D time evolution)")
-    print("9. Average density over x for all runs from a given timestep, with comparison grid")
-    print("10. Analyze density derivatives for several averaged densities over x starting from different timesteps with comparison grid")
+    print("1. Visualize density over parameter sweep with comparison grid (specific time step)")
+    print("2. Visualize density over parameter sweep grids for ALL time steps in the given runs directory")
+    print("3. View START configuration of density heatmaps")
+    print("4. View all density heatmaps in directory") 
+    print("5. View single density heatmap from file path")
+    print("6. View time evolution of density of single configuration")
+    print("7. Visualize the observable number of moving particles to determine timestep to start averaging")
+    print("8. Create 2D stacked density evolution over the timesteps")
+    print("9. Visualize density derivatives for smoothed densities starting from one or several averaging timesteps in a grid")
+    print("10. Calculate lambda and gamma for smoothed densities starting from one or several averaging timesteps in a grid (smoothing activated, results printed)")
     
     while True:
         try:
@@ -187,31 +188,8 @@ if __name__ == "__main__":
         )
         print("2D stacked density evolution complete!")
 
-    # Option 9: Average density over x for all runs from a given timestep, with comparison grid
+
     if mode_choice == '9':
-        while True:
-            try:
-                start_input = input("Enter the starting timestep for averaging (e.g., 10000): ").strip()
-                start_step = int(start_input)
-                break
-            except ValueError:
-                print("Please enter a valid integer.")
-
-        # do you want to smooth it?
-        smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
-        smooth_density = smooth_choice == 'y'
-
-        save_choice = input("Save comparison grid to file? (y/n): ").strip().lower()
-        if save_choice == 'y' and smooth_choice == 'y':
-            # Create a directory for saving the averaged density profiles
-            save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}_smoothing")
-        if save_choice == 'y' and smooth_choice == 'n':
-            # Create a directory for saving the averaged density profiles without smoothing
-            save_dir = os.path.join(analysis_dir, f"density_average_x_start_step_{start_step}")
-
-        average_density_option_9(runs_dir=runs_dir, save_dir=save_dir, save_choice=save_choice, start_step=start_step, smooth_density=smooth_density)
-
-    if mode_choice == '10':
         use_defaults = True  # Change to False if you want to re-enable input
         if use_defaults:
             step_list = list(range(1000, 50001, 7000))  # Example default steps
@@ -279,8 +257,29 @@ if __name__ == "__main__":
         else:
             print(f"Calculating {kind_of_derivative} density derivatives.")
             analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
-    
-    # End to measure execution time
+  
+
+    if mode_choice == '10':
+        # new: I want to calculate lambda derivatives
+        use_defaults = True  # Change to False if you want to re-enable input
+        if use_defaults:
+            start_averaging_step = 7000  # Example default steps
+        else:
+            while True:
+                try:
+                    step_input = input("Enter one timestep to analyze: ").strip()
+                except ValueError:
+                    print("Invalid input. Please enter a valid timestep.")
+
+        save_dir = os.path.join(analysis_dir, f"results_gamma_lambda_{start_averaging_step}")
+        
+        os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+
+        compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+        # Optionally run flux analysis after derivatives
+        # analyze_fluxes_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None)
+
+  # End to measure execution time
     end_time = time.time()
     elapsed = end_time - start_time
 

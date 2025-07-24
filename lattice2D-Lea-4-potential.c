@@ -542,7 +542,7 @@ void InitialCondition(long int seed){
             {
                 Occupancy[i][j]=0;
                 CalculatedDensity[i] = 0; // Initialize density array
-                XAccumulatedFlux[i]=0; // Initialize flux matrix
+                XAccumulatedFlux[i] = 0; // Initialize flux matrix
             }
         
     #if (WALL==1)
@@ -731,13 +731,13 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         } else {
             for(i=0;i<Lx;i++)
             {  
-                fprintf(f,"%.3f ", (double)CalculatedDensity[i] / Ly);
+                fprintf(f,"%.6f ", (double)CalculatedDensity[i] / Ly);
             }
             fclose(f);
         }
     }
     // Write MovingParticles
-    if (track_flux && (index == TotalTime || index == -1 || index == 0)) {
+    if (track_flux && ((index % 1000) == 0 || index == -1)) {
         sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
@@ -745,7 +745,7 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         } else {
             for(i=0;i<Lx;i++)
             {
-                fprintf(f,"%.3f ",(double)XAccumulatedFlux[i] / (Ly*TotalTime));
+                fprintf(f,"%.6f ",(double)XAccumulatedFlux[i] / (Ly*TotalTime));
             }
             fprintf(f,"\n");
         
@@ -1017,6 +1017,7 @@ int main(int argc, char **argv)
 
     // Compute the number of particles (may be overridden if loading from file)
     NParticles=(int)(Density*Lx*Ly);
+    fprintf(stderr, "number of particles: %ld\n", NParticles);
 
     // Initialize the simulation (pass seed from params)
     InitialCondition(params.seed);

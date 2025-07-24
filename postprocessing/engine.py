@@ -8,8 +8,9 @@ from datetime import datetime
 import shlex
 from scipy.integrate import quad
 from scipy.optimize import brentq
+import bisect
 
-from postprocessing.helper import kernel_function, kernel_derivative, kernel_second_derivative, \
+from postprocessing.helper import nw_kernel_regression, nw_first_derivative, nw_second_derivative, \
     quotient_rule, find_all_roots
 
 def create_discrete_colormap(max_val):
@@ -695,52 +696,6 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
     print(f"Density evolution comparison grid saved to: {save_path}")
     plt.close()
 
-# Nadaraya-Watson regression
-def nw_kernel_regression(x_eval, x_train, y_train, mu):
-    y_pred = []
-    for x in x_eval:
-        dx = x - x_train
-        weights = kernel_function(dx, mu)
-        nominator = np.sum(weights * y_train)
-        denominator = np.sum(weights)
-        y_pred.append(nominator / denominator if denominator != 0 else 0)
-    return np.array(y_pred)
-
-# First derivative of regression
-def nw_first_derivative(x_eval, x_train, y_train, mu):
-    dy_pred = []
-    for x in x_eval:
-        dx = x - x_train
-        weights = kernel_function(dx, mu)
-        dw = kernel_derivative(dx, mu)
-        nominator = np.sum(weights * y_train)
-        denominator = np.sum(weights)
-        dN = np.sum(dw * y_train)
-        dD = np.sum(dw)
-        dy_pred.append(quotient_rule(nominator, denominator, dN, dD))
-    return np.array(dy_pred)
-
-# Second derivative of regression
-def nw_second_derivative(x_eval, x_train, y_train, mu):
-    d2y_pred = []
-    for x in x_eval:
-        dx = x - x_train
-        weights = kernel_function(dx, mu)
-        dw = kernel_derivative(dx, mu)
-        d2w = kernel_second_derivative(dx, mu)
-
-        nominator= np.sum(weights * y_train)
-        denominator= np.sum(weights)
-        dN = np.sum(dw * y_train)
-        dD = np.sum(dw)
-        d2N = np.sum(d2w * y_train)
-        d2D = np.sum(d2w)
-
-        num = d2N * denominator**2 - 2 * dN * denominator* dD + 2 * nominator* dD**2 - nominator* d2D
-        denom = denominator**3
-        d2y_pred.append(num / denom)
-    return np.array(d2y_pred)
-
 def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
     x = np.arange(len(profile))
     if mu is None:
@@ -756,59 +711,58 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
     elif method == "diff":
         first_deriv = np.gradient(smoothed)
         second_deriv = np.gradient(first_deriv)
+    elif method == 'none':
+        first_deriv = np.zeros_like(smoothed)
+        second_deriv = np.zeros_like(smoothed)
     else:
         raise ValueError(f"Unknown method '{method}' for derivative computation, try diff or kernel")
-
     return smoothed, first_deriv, second_deriv
 
-def compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None, kind_computing=None):
-    import bisect
+def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
     print(f"folders found: {folders}")
-    # Pre-index all available density files per folder
-    folder_step_map = {}
+
+    # Ensure steps_to_include is iterable
+    if isinstance(steps_to_include, int):
+        steps_to_include = [steps_to_include]
+    # Allow steps_to_include to be a single int or an iterable
+    if isinstance(steps_to_include, int):
+        steps_iter = [steps_to_include]
+    else:
+        steps_iter = steps_to_include
+
     for folder in folders:
-        if kind_computing == "density":
-            density_files = [f for f in os.listdir(folder) if f.startswith("Density_") and f.endswith(".dat")]
-        elif kind_computing == "flux":
-            density_files = [f for f in os.listdir(folder) if f.startswith("XAccumulatedFlux_") and f.endswith(".dat")]
-        else:
-            raise ValueError(f"Unknown kind_computing '{kind_computing}', expected 'density' or 'flux'")
-        steps = []
-        file_map = {}
-        for f in density_files:
-            try:
-                num = int(f.split("_")[1].split(".")[0])
-                steps.append(num)
-                file_map[num] = os.path.join(folder, f)
-            except Exception:
-                continue
-        steps.sort()
-        folder_step_map[folder] = (steps, file_map)
-    # For each folder and each requested step, collect all files >= step and compute mean profile
-    profiles_by_step = {}
-    for folder in folders:
-        steps, file_map = folder_step_map[folder]
         folder_name = os.path.basename(folder)
-        for step in steps_to_include:
-            profiles = []
+        # Find all density files and extract their steps
+        density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
+        steps = sorted([
+            int(os.path.basename(f).split("_")[1].split(".")[0])
+            for f in density_files
+        ])
+        file_map = {
+            int(os.path.basename(f).split("_")[1].split(".")[0]): f
+            for f in density_files
+        }
+        for step in steps_iter:
             idx = bisect.bisect_left(steps, step)
+            profiles = []
             for s in steps[idx:]:
                 path = file_map[s]
-                if os.path.isfile(path):
+                try:
                     data = np.loadtxt(path)
                     if data.ndim == 1:
                         profiles.append(data)
                     elif data.ndim == 2:
                         profiles.append(np.mean(data, axis=0))
+                except Exception:
+                    continue
             if not profiles:
                 print(f"[Warning] No profiles found for folder {folder_name} step {step}")
                 continue
             avg_profile = np.mean(profiles, axis=0)
             print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
             smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
-            # Key by (folder_name, step)
             profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
 
@@ -851,75 +805,71 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
         else:
             plt.show()
 
+def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
+    profiles_by_step = {}
+    folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+    print(f"folders found: {folders}")
 
-# ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda(runs_dir, method='kernel', start_averaging_step=0, x_min = 0, x_max = 200):
-    """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
-    gam_exp = []
-    lam_exp = []
-    erf_exp = []
-    cov_exp = []
+    # Ensure steps_to_include is iterable
+    if isinstance(steps_to_include, int):
+        steps_to_include = [steps_to_include]
+    # Allow steps_to_include to be a single int or an iterable
+    if isinstance(steps_to_include, int):
+        steps_iter = [steps_to_include]
+    else:
+        steps_iter = steps_to_include
 
-    rho_min = 1
-    rho_max = 1.75
-    rho_est_arr = np.linspace(rho_min, rho_max, 5)
+    for folder in folders:
+        folder_name = os.path.basename(folder)
+        # Find all density files and extract their steps
+        density_files = glob.glob(os.path.join(folder, "XAccumulatedFlux_*.dat"))
+        steps = sorted([
+            int(os.path.basename(f).split("_")[1].split(".")[0])
+            for f in density_files
+        ])
+        file_map = {
+            int(os.path.basename(f).split("_")[1].split(".")[0]): f
+            for f in density_files
+        }
+        for step in steps_iter:
+            idx = bisect.bisect_left(steps, step)
+            profiles = []
+            for s in steps[idx:]:
+                path = file_map[s]
+                try:
+                    data = np.loadtxt(path)
+                    if data.ndim == 1:
+                        profiles.append(data)
+                    elif data.ndim == 2:
+                        profiles.append(np.mean(data, axis=0))
+                except Exception:
+                    continue
+            if not profiles:
+                print(f"[Warning] No profiles found for folder {folder_name} step {step}")
+                continue
+            
+            # dont compute average, but subtract contributions from before the starting step
+            used_start_step = steps[idx] if idx < len(steps) else steps[-1]
+            start_step_profile = profiles[idx]
+            print(f"Using start step {used_start_step} for folder {folder_name} step {step}")
+            end_step = steps[-1]
+            final_profile = profiles[-1]  # Use the last profile as the representative one
+            reduced_profile = (final_profile * end_step - used_start_step * start_step_profile) / (end_step - used_start_step)
+     
+            x = np.arange(len(reduced_profile))
+            if mu is None:
+                mu = np.std(reduced_profile)
+            if smooth:
+                smoothed = nw_kernel_regression(reduced_profile, x, x, mu)
+            else:
+                smoothed = reduced_profile
+            profiles_by_step[(folder_name, step)] = (smoothed)
+    return profiles_by_step
 
-    print("sim", "|" , "gamma", "|" , "lambda")
-
-    for i in range(len(rho_exp)):       
-        # calculate rho and its derivatives
-        steps_to_include = start_averaging_step
-        profiles_by_step_density = compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, kind_computing="density")
-        _, value_density = next(iter(profiles_by_step_density.items()))
-        rho_exp, d_rho_exp, d2_rho_exp = value_density
-
-        # Todo:calculate J
-        profiles_by_step_flux = compute_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, kind_computing="flux")
-        _, value_flux = next(iter(profiles_by_step_flux.items()))
-        J_exp, _, _ = value_flux
-
-        A = []
-        B = []
-        erf = []
-
-        for rho_est in rho_est_arr:
-            rho_moved = rho_exp - rho_est
-            rho_moved_interp = interp1d(np.linspace(0,200,len(rho_moved)), rho_moved, kind='cubic')
-            J_div_rho = J_exp / rho_exp
-
-            # determination of integration limits
-            roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
-            a = roots[0] if len(roots) > 0 else x_min
-            b = roots[1] if len(roots) > 0 else x_max
-
-            plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
-            plt.show()
-
-            # integrals for current
-            integral_j, err = quad(J_div_rho, a, b)
-            # Todo:integrals for Potential
-            integral_rho_g, err = 0, 0
-
-            # values of A and B
-            a0 = -(d2_rho_exp(b) - d2_rho_exp(a))
-            a1 = (d_rho_exp(b) ** 2 - d_rho_exp(a) ** 2)
-            b = -integral_j - integral_rho_g
-            A.append([a0[0], a1[0]])
-            B.append(b)
-        
-        A = np.array(A)
-        B = np.array(B)
-
-        U, s, Vh = svd(A, full_matrices=False)
-
-        gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
-        gam_exp.append(round(gam, 2))
-        lam_exp.append(round(lam, 2))
-
-
-        cov = Vh @ np.diag(1 / s**2) @ Vh.T
-        cov_exp.append(cov)
-        erf = B - A@[gam, lam]
-        erf_exp.append(erf)
-
-        print(i, "|" , gam, "|" , lam, 2)
+def check_if_at_integration_points_equal(func, a, b, tol=1e-8):
+    val_a = func(a)
+    val_b = func(b)
+    if abs(val_a - val_b) < tol:
+        raise ValueError(f"Function values at integration points are too close: func({a})={val_a}, func({b})={val_b}")
+    else:
+        print(f"Function values at integration points are acceptable: func({a})={val_a}, func({b})={val_b}")

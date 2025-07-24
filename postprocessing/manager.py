@@ -5,13 +5,17 @@ import glob
 from matplotlib.colors import ListedColormap
 import re
 from datetime import datetime
+from scipy.interpolate import interp1d
+from scipy.integrate import quad
 
 from postprocessing.engine import create_discrete_colormap, find_files_in_directory, \
     load_occupancy_data, extract_parameters_from_folder, process_folder_for_sweep, \
     create_comparison_grid, create_density_evolution_comparison_grid, \
     create_individual_movement_plot, create_combined_movement_plots, \
-    compute_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid, nw_kernel_regression
+    compute_density_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid, \
+    nw_kernel_regression, compute_flux_profiles_by_step, check_if_at_integration_points_equal
 
+from postprocessing.helper import find_all_roots
 
 def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_times=False, save_dir=None):
     """Create comprehensive visualizations for parameter sweep results."""
@@ -492,106 +496,97 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
         create_density_evolution_comparison_grid(all_processed_data, save_dir, run_date)
     print("Density evolution stacked visualization complete!")
 
-def average_density_option_9(runs_dir=None, save_dir=None, save_choice=None, start_step=None, smooth_density=None):
-    folder_results = find_files_in_directory(runs_dir)
-    folders = [full_path for _, full_path, _ in folder_results]
-    all_avg_profiles = []
-    param_grid = []
-    for folder in folders:
-        # Find all density files in this folder
-        density_files = glob.glob(f"{folder}/Density_*.dat")
-        time_files = []
-        for file in density_files:
-            match = re.search(r'Density_(-?\d+)\.dat', file)
-            if match:
-                time_step = int(match.group(1))
-                if time_step >= start_step:
-                    time_files.append((time_step, file))
-        time_files.sort()
-        if not time_files:
-            continue
-        # Load and average
-        profiles = []
-        for _, file_path in time_files:
-            raw_data = np.loadtxt(file_path)
-            if raw_data.ndim == 1:
-                profiles.append(raw_data)
-            elif raw_data.ndim == 2:
-                profiles.append(np.mean(raw_data, axis=0))
-        if profiles:
-            avg_profile = np.mean(profiles, axis=0)
-            # if smoothing is requested, apply a simple moving average
-            if smooth_density:
-                mu = np.std(avg_profile)
-                y_train = avg_profile
-                x_train = np.arange(len(avg_profile))
-                x_eval = x_train
-                avg_profile = nw_kernel_regression(x_eval, x_train, y_train, mu)
-            # Extract parameters
-            dir_name = os.path.basename(folder)
-            density, tumble_rate, total_time, gamma, g = extract_parameters_from_folder(dir_name)
-            all_avg_profiles.append({
-                'density': density,
-                'tumble_rate': tumble_rate,
-                'avg_profile': avg_profile,
-                'dir_name': dir_name
-            })
-            param_grid.append((density, tumble_rate))
-            # Plot individual profile
-            if save_dir:
-                os.makedirs(save_dir, exist_ok=True)
-                plt.figure(figsize=(10, 6))
-                plt.plot(avg_profile)
-                plt.title(f"Average Density over X\n{dir_name}, start step {start_step}")
-                plt.xlabel("X Position")
-                plt.ylabel("Average Density")
-                plt.grid(True, alpha=0.3)
-                plt.tight_layout()
-                if smooth_density:
-                    plt.savefig(os.path.join(save_dir, f"avg_density_{dir_name}_from_{start_step}_smooth.png"), dpi=300)
-                else:
-                    plt.savefig(os.path.join(save_dir, f"avg_density_{dir_name}_from_{start_step}.png"), dpi=300)
-                plt.close()
-    # Create comparison grid
-    if all_avg_profiles:
-        densities = sorted(list(set(p['density'] for p in all_avg_profiles if p['density'] is not None)))
-        tumble_rates = sorted(list(set(p['tumble_rate'] for p in all_avg_profiles if p['tumble_rate'] is not None)))
-        n_rows = len(densities)
-        n_cols = len(tumble_rates)
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
-        for row, density in enumerate(densities):
-            for col, tumble_rate in enumerate(tumble_rates):
-                ax = axes[row, col]
-                found = False
-                for p in all_avg_profiles:
-                    if p['density'] == density and p['tumble_rate'] == tumble_rate:
-                        ax.plot(p['avg_profile'])
-                        ax.set_title(f"ρ={density:.2f}, α={tumble_rate:.3f}")
-                        ax.set_xlabel("X Position")
-                        ax.set_ylabel("Avg Density")
-                        ax.grid(True, alpha=0.3)
-                        found = True
-                        break
-                if not found:
-                    ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=12)
-                    ax.set_xticks([])
-                    ax.set_yticks([])
-        plt.suptitle(f"Average Density over X (from step {start_step})", fontsize=18, fontweight='bold')
-        plt.tight_layout()
-        if save_dir:
-            if smooth_density:
-                plt.savefig(os.path.join(save_dir, f"comparison_grid_avg_density_from_{start_step}_smooth.png"), dpi=300)
-            else:
-                plt.savefig(os.path.join(save_dir, f"comparison_grid_avg_density_from_{start_step}.png"), dpi=300)
-            print(f"Saved comparison grid to {os.path.join(save_dir, f'comparison_grid_avg_density_from_{start_step}.png')}")
-        else:
-            plt.show()
-    else:
-        print("No valid average profiles found for the given timestep.")
-
 def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None):
-    profiles_by_step = compute_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method, kind_computing="density")
+    profiles_by_step = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method)
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
+
+# ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
+def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_averaging_step=0, x_min = 0, x_max = 200):
+    """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
+    gam_exp = []
+    lam_exp = []
+    erf_exp = []
+    cov_exp = []
+
+    rho_min = 1
+    rho_max = 1.75
+    rho_est_arr = np.linspace(rho_min, rho_max, 10)
+
+    print("sim", "|" , "gamma", "|" , "lambda")
+
+    # only for several simulations for i in range(len(rho_exp)):    
+    # calculate rho and its derivatives
+    steps_to_include = start_averaging_step
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    _, value_density = next(iter(profiles_by_step_density.items()))
+    rho_exp, d_rho_exp, d2_rho_exp = value_density
+    plt.plot(rho_exp, label="rho_exp")
+    plt.legend()
+    plt.show()
+    # calculate J
+    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    _, J_exp = next(iter(profiles_by_step_flux.items()))
+    print(f"J_exp: {J_exp.shape}")
+    print(f"J_exp: {J_exp}")
+
+    A = []
+    B = []
+    erf = []
+
+    for rho_est in rho_est_arr:
+        x_grid = np.linspace(0, 200, len(rho_exp))
+        rho_moved = rho_exp - rho_est
+        rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
+        J_div_rho = J_exp / rho_exp
+
+        # determination of integration limits
+        roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
+        print(f"Roots found: {roots}")
+        plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
+        plt.show()
+        a = roots[0] if len(roots) > 0 else x_min
+        b = roots[1] if len(roots) > 0 else x_max
+
+        # Suppose x_grid is the grid of x values (e.g., np.linspace(0, 200, len(d_rho_exp)))
+        d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
+        d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
+
+        check_if_at_integration_points_equal(d_rho_exp_func, a, b)
+        check_if_at_integration_points_equal(d2_rho_exp_func, a, b)
+
+        plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
+        plt.legend()
+        plt.show()
+
+        # integrals for current
+        J_div_rho_func = interp1d(x_grid, J_div_rho, kind='cubic', fill_value="extrapolate")
+        integral_j, err = quad(J_div_rho_func, a, b)
+        # ToDo: integrals for Potential
+        integral_rho_g, err = 0, 0
+
+        # values of A and B
+        a0 = -(d2_rho_exp(b) - d2_rho_exp(a))
+        a1 = (d_rho_exp(b) ** 2 - d_rho_exp(a) ** 2)
+        b = -integral_j - integral_rho_g
+        A.append([a0[0], a1[0]])
+        B.append(b)
+    
+    A = np.array(A)
+    B = np.array(B)
+
+    U, s, Vh = svd(A, full_matrices=False)
+
+    gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
+    gam_exp.append(round(gam, 2))
+    lam_exp.append(round(lam, 2))
+
+
+    cov = Vh @ np.diag(1 / s**2) @ Vh.T
+    cov_exp.append(cov)
+    erf = B - A@[gam, lam]
+    erf_exp.append(erf)
+
+    print(i, "|" , gam, "|" , lam, 2)
