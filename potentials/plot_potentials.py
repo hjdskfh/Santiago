@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 Lx = 200
 Gamma = -0.5
 G = 1.0
-X_max = 0
-lower_bound = 0.0
-upper_bound = 1.0
+lower_bound = 0.1
+upper_bound = 0.9
+X_max = 0  # This will be set later in the code
 
 # Golden section search
 def golden_section_search(func, a, b, tol=1e-6):
@@ -15,18 +15,18 @@ def golden_section_search(func, a, b, tol=1e-6):
     c = b - (b - a) / gr
     d = a + (b - a) / gr
     while abs(b - a) > tol:
-        if func(c) < func(d):
-            a = c
-        else:
+        if func(c) > func(d):
             b = d
+        else:
+            a = c
         c = b - (b - a) / gr
         d = a + (b - a) / gr
     return (b + a) / 2
 
 # Potential functions
-def uneven_sin(x): return np.sin(x + X_max) + Gamma * np.sin(2 * (x + X_max))
+def uneven_sin(x): return np.sin(x) + Gamma * np.sin(2 * x)
 def shifted_uneven_sin(x): return G * uneven_sin(x) + 0.5
-def symmetric_sin(x): return G * np.sin(x + X_max) + 0.5
+def symmetric_sin(x): return G * np.sin(x) + 0.5
 
 # Rescaling
 def rescaling_function(func, x, lower_bound, upper_bound, f_max, f_min):
@@ -36,9 +36,9 @@ def rescaling_function(func, x, lower_bound, upper_bound, f_max, f_min):
 # Initialize and return move probability
 def initialize_move_prob_map(func, label):
     x_vals = np.linspace(0, 2*np.pi, 1000)
-    global X_max
-    X_max = golden_section_search(func, 0.0, 2 * np.pi)
-    pot_arr = func(x_vals)
+    x_max = golden_section_search(func, 0.0, 2 * np.pi)
+    print(f"Maximizing x for {label}: x_max = {x_max}")
+    pot_arr = func(x_vals + x_max)
     f_max = np.max(pot_arr)
     f_min = np.min(pot_arr)
     if abs(f_max - f_min) < 1e-12:
@@ -48,6 +48,7 @@ def initialize_move_prob_map(func, label):
     print(f"x_vals: {x_vals[:5]}...")  # Print first 5 values for debugging
     print(f"move_prob: {move_prob[:5]}...")  # Print first 5 values for debugging
     x_box = np.linspace(0, Lx, 1000)
+
     return x_box, move_prob, label
 
 # Compute and plot

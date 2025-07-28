@@ -131,6 +131,7 @@ build_simulation_command() {
     cmd="$cmd --potential $MOVE_PROB"
     cmd="$cmd --gamma $gamma"
     cmd="$cmd --g $g"
+    cmd="$cmd --v0 $v0"
     cmd="$cmd --potential-lower $potential_lower"
     cmd="$cmd --potential-upper $potential_upper"
     cmd="$cmd --seed $seed"
@@ -235,9 +236,9 @@ echo "Starting parameter sweep..."
 
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
-densities=(0.7 0.8 0.9) # (0.000125) # 
+densities=(0.000125) # (0.7 0.8 0.9)
 tumble_rates=(0.07 0.08 0.09)
-total_time=10000
+total_time=500000
 start_tumble_rate=0.005
 
 # *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
@@ -245,7 +246,8 @@ start_tumble_rate=0.005
 # Just make sure the C program accepts the --parameter-name format
 
 gamma=-0.5              # Gamma parameter for sin potentials
-g=1                     # G parameter for director-uneven-sin potential > 0 !
+g=1                     # G parameter for director-uneven-sin potential
+v0=0.5
 potential_lower=0.1    # Lower bound for potential, UPPER AND LOWER BOUNDS MUST symmetrical around 0.5: # e.g. 0.2 and 0.8 for a range of 0.6
 potential_upper=0.9     # Upper bound for potential
 seed=837437             # Random seed (example of new parameter)

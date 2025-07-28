@@ -69,7 +69,7 @@ if __name__ == "__main__":
     print("8. Create 2D stacked density evolution over the timesteps")
     print("9. Visualize density derivatives for smoothed densities starting from one or several averaging timesteps in a grid")
     print("10. Calculate lambda and gamma for smoothed densities starting from one or several averaging timesteps in a grid (smoothing activated, results printed)")
-    
+
     while True:
         try:
             mode_choice = input("\nEnter your choice (1-10): ").strip()
@@ -201,9 +201,9 @@ if __name__ == "__main__":
         else:
             while True:
                 try:
-                    step_input = input("Enter the timesteps to analyze (e.g., 1000, 3000, 5000 or 1000 to 5000 in steps of 50): ").strip()
+                    step_input = input("Enter the timesteps to analyze (e.g., 1000, 3000, 5000 or 1000 to 5000 in steps of 1000): ").strip()
                     if 'to' in step_input and 'step' in step_input:
-                        # Accept format: 1000 to 5000 in steps of 50
+                        # Accept format: 1000 to 5000 in steps of 1000
                         import re
                         match = re.match(r"(\d+)\s*to\s*(\d+)\s*in steps of\s*(\d+)", step_input)
                         if match:
@@ -263,11 +263,19 @@ if __name__ == "__main__":
         # new: I want to calculate lambda derivatives
         use_defaults = True  # Change to False if you want to re-enable input
         if use_defaults:
-            start_averaging_step = 7000  # Example default steps
+            start_averaging_step = 20000  # Example default steps
         else:
             while True:
                 try:
-                    step_input = input("Enter one timestep to analyze: ").strip()
+                    step_input = input("Enter one timestep to analyze (0 or multiples of 1000): ").strip()
+                    if step_input == "0":
+                        step_list = [0]
+                    else:
+                        step_list = list(map(int, step_input.split(",")))
+                    if all(step % 1000 == 0 for step in step_list):
+                        break
+                    else:
+                        print("Invalid input. Please enter 0 or multiples of 1000.")
                 except ValueError:
                     print("Invalid input. Please enter a valid timestep.")
         
@@ -281,8 +289,10 @@ if __name__ == "__main__":
         # Optionally run flux analysis after derivatives
         # analyze_fluxes_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None)
 
-  # End to measure execution time
+    # End to measure execution time
     end_time = time.time()
     elapsed = end_time - start_time
 
     print(f"Execution time: {elapsed:.4f} seconds")
+
+    

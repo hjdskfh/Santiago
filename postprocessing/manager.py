@@ -518,6 +518,11 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
     rho_est_arr = np.linspace(rho_min, rho_max, 10)
 
     print("sim", "|" , "gamma", "|" , "lambda")
+    # Prepare to write gamma and lambda to a file
+    output_filename = os.path.join('analysis', 'gamma_lambda_results.txt')
+    os.makedirs('analysis', exist_ok=True)
+    output_file = open(output_filename, 'w')
+    output_file.write("sim\tfolder\tgamma\tlambda\n")
 
     # calculate index reference from main to one particle run directory to know which J_exp and which rho_exp to use
     # length = amount of folders in runs_dir, values are indices of runs_dir_one_particle
@@ -533,7 +538,6 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
     step_to_include_one = 0
     profiles_by_step_density_one = compute_density_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
     profiles_by_step_flux_one = compute_flux_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
-    
 
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
@@ -550,15 +554,21 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
         # key is (folder_name, step)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
         print(f"rho_exp: {rho_exp.shape}")
+        print("Any zeros in rho_exp?", np.any(rho_exp == 0))
         plt.plot(rho_exp, label="rho_exp")
         plt.legend()
         plt.show()
 
-        print(f"For run number {idx} key for density {key_density} is used")
+        #print(f"For run number {idx} key for density {key_density} is used")
         J_exp = list(profiles_by_step_flux.values())[idx]  # Get J for the same key
-        print(f"For run number {idx} key for flux {list(profiles_by_step_flux.keys())[idx]} is used")
+        #print(f"For run number {idx} key for flux {list(profiles_by_step_flux.keys())[idx]} is used")
         rho_exp_one, d_rho_exp_one, d2_rho_exp_one = list(profiles_by_step_density_one.values())[index_one]  # Get rho for the same key
+        plt.plot(rho_exp_one, label="rho_exp_one")
+        plt.legend()
+        plt.show()
+
         J_exp_one = list(profiles_by_step_flux_one.values())[index_one]  # Get J for the same key
+        print("Any zeros in rho_exp_one?", np.any(rho_exp_one == 0))
 
         A = []
         B = []
@@ -570,12 +580,14 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
             rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
             J_div_rho = J_exp / rho_exp
             J_div_rho_one = J_exp_one / rho_exp_one
+            print("Any NaN in J_div_rho?", np.isnan(J_div_rho).any())
+            print("Any NaN in J_div_rho_one?", np.isnan(J_div_rho_one).any())
 
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
             print(f"Roots found: {roots}")
-            plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
-            plt.show()
+            #plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
+            #plt.show()
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
 
@@ -586,9 +598,9 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
             check_if_at_integration_points_equal(d_rho_exp_func, a, b)
             check_if_at_integration_points_equal(d2_rho_exp_func, a, b)
 
-            plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
-            plt.legend()
-            plt.show()
+            #plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
+            #plt.legend()
+            #plt.show()
 
             # integrals for current
             J_div_rho_func = interp1d(x_grid, J_div_rho, kind='cubic', fill_value="extrapolate")
@@ -607,7 +619,16 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
         A = np.array(A)
         B = np.array(B)
 
+        print("A:", A)
+        print("B:", B)
+        print("Any NaN in A?", np.isnan(A).any())
+        print("Any NaN in B?", np.isnan(B).any())
+
         U, s, Vh = svd(A, full_matrices=False)
+
+        print("U:", U)
+        print("s:", s)
+        print("Vh:", Vh)
 
         gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
         gam_exp.append(round(gam, 2))
@@ -620,3 +641,9 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
         erf_exp.append(erf)
 
         print(idx, "|" , gam, "|" , lam, 2)
+        # Write to file as well, including folder name (from key_density)
+        folder_name = key_density[0] if isinstance(key_density, tuple) and len(key_density) > 0 else str(key_density)
+        output_file.write(f"{idx}\t{folder_name}\t{gam}\t{lam}\n")
+
+    output_file.close()
+    print(f"Gamma and lambda results written to {output_filename}")

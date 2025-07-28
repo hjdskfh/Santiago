@@ -45,7 +45,7 @@ double PotentialLower;
 double PotentialUpper;
 double Gamma; // Gamma parameter for uneven sin function (strength of the second harmonic)
 double G; // Global parameter for director-based potential
-double X_max; // Minimum x value for potential functions (used in rescaling)
+double V0; 
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -77,7 +77,8 @@ void PrintMoveProbMap(int start_x, int end_x, int start_y, int end_y);
 void PrintMoveProbMapSample(void);
 
 // Forward declarations for utility functions
-double golden_section_search(double (*func)(double), double a, double b, double tol);
+double golden_section_search_max(double (*func)(double), double a, double b, double tol);
+double golden_section_search_min(double (*func)(double), double a, double b, double tol);
 double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min);
 static double uneven_sin_for_search(double x);
 static double shifted_uneven_sin_for_search(double x);
@@ -138,7 +139,27 @@ static const PotentialDefinition POTENTIAL_REGISTRY[] = {
 };
 
 // Golden Section Search to find maximum
-double golden_section_search(double (*func)(double), double a, double b, double tol) {
+double golden_section_search_max(double (*func)(double), double a, double b, double tol) {
+    const double gr = (sqrt(5) + 1) / 2;  // Golden ratio
+    double c = b - (b - a) / gr;  // Left midpoint
+    double d = a + (b - a) / gr;  // Right midpoint
+    
+    while (fabs(b - a) > tol) {
+        if (func(c) < func(d)) {
+            b = d;  // Move b to d
+        } else {
+            a = c;  // Move a to c
+        }
+        c = b - (b - a) / gr;  // Left midpoint
+        d = a + (b - a) / gr;  // Right midpoint
+    }
+    
+    // Return the midpoint of the final interval (where the maximum is located)
+    return (a + b) / 2;
+}
+
+// Golden Section Search to find minimum
+double golden_section_search_min(double (*func)(double), double a, double b, double tol) {
     const double gr = (sqrt(5) + 1) / 2;  // Golden ratio
     double c = b - (b - a) / gr;  // Left midpoint
     double d = a + (b - a) / gr;  // Right midpoint
@@ -169,7 +190,7 @@ double rescaling_function(double (*func)(double), double x, double lower_bound, 
 
 // Wrapper functions for golden section search (captures gamma)
 static double uneven_sin_for_search(double x) {
-    return sin((x + X_max)) + Gamma * sin(2 * (x + X_max));
+    return sin(x) + Gamma * sin(2 * x);
 }
 
 double shifted_uneven_sin_for_search(double x) {
@@ -179,27 +200,24 @@ double shifted_uneven_sin_for_search(double x) {
 
 double symmetric_sin_for_search(double x) {
     // Symmetric version: G * sin(x + X_max) + 0.5
-    return G * sin(x + X_max) + 0.5;
+    return G * sin(x) + 0.5;
 }
+
 
 // Unified potential initialization function
 void InitializeSinPotentialMap(double (*func)(double), double lower_bound, double upper_bound) {
-    double x_max = golden_section_search(func, 0.0, 2 * M_PI, 1e-6);
+    double x_max = golden_section_search_max(func, 0.0, 2 * M_PI, 1e-6);
+    double f_max = func(x_max);
     if (x_max < 0.0 || x_max > 2 * M_PI) {
         fprintf(stderr, "[ERROR] Golden section search returned invalid x_max: %.6f\n", x_max);
         exit(1);
     }
     fprintf(stderr, "[PRINT] Golden section search returned invalid x_max: %.6f\n", x_max);
 
-    double f_max = func(x_max);
-    // Find true minimum over [0, 2π]
-    double f_min = f_max;
-    for (double x = 0.0; x <= 2*M_PI; x += 0.01) {
-        double val = func(x);
-        if (val < f_min) f_min = val;
-    }
-    // Set X_max to the maximum x value where the function is defined, so the maximum is at 0
-    X_max = x_max;
+    // Find true minimum over [0, 2π] by taking the max of the negative of the function
+    double x_min = golden_section_search_min(negated_func, 0.0, 2 * M_PI, 1e-6);
+    double f_min = func(x_min);
+    
     // Check if f_max and f_min are valid
     if (fabs(f_max - f_min) < 1e-12) {
         fprintf(stderr, "[ERROR] f_max == f_min (%.6f), division by zero avoided. Setting all MoveProbMap to 0.5.\n", f_max);
@@ -211,7 +229,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
     } else {
         for (int x = 0; x < Lx; x++) {
             for (int y = 0; y < Ly; y++) {
-                double scale_x = ((double)x / Lx) * 2 * M_PI; 
+                double scale_x = ((double)x / Lx) * 2 * M_PI + x_max; //  Rescale x to [0, 2π] with shift
                 MoveProbMap[x][y] = rescaling_function(func, scale_x, lower_bound, upper_bound, f_max, f_min);
                 // Clamp to [0,1]
                 if (isnan(MoveProbMap[x][y]) || isinf(MoveProbMap[x][y])) {
@@ -252,10 +270,17 @@ double CalculateMovementProbability(const int x, const int y, const int dir_x, c
         fprintf(stderr, "[ERROR] CalculateMovementProbability: x/y out of bounds (%d,%d)\n", x, y);
         exit(1);
     }
-    double prob = 1.0;
+    double prob = V0;   // Default value for V0, can be overridden by potential type logic
+    double amplitude = 0;
+    if (V0 > 0.5){
+        amplitude = PotentialUpper - V0; // Calculate amplitude based on V0
+    } else {
+        amplitude = V0 - PotentialLower; // If V0 is less than or equal to 0.5, use it directly
+    }
+    // Determine the lower and upper bounds
     switch (PotentialTypeCode) {
         case 0: // "default"
-            prob = 1.0;
+            prob = V0;  
             break;
         case 1: // "uneven-sin"
             if (!MoveProbMapInitialized) {
@@ -265,16 +290,18 @@ double CalculateMovementProbability(const int x, const int y, const int dir_x, c
             break;
         case 2: // "director-uneven-sin"
         case 3: // "director-symmetric-sin"
+            PotentialLower = - amplitude; // Set lower bound based on amplitude
+            PotentialUpper = amplitude; // Set upper bound based on amplitude
             if (dir_y == 0) {
-                prob = 0.5;
+                prob = V0;
             } else {
                 if (!MoveProbMapInitialized) {
                     InitializeMoveProbMap();
                 }
                 if (dir_y > 0) {
-                    prob = MoveProbMap[x][y];
+                    prob = V0 + MoveProbMap[x][y];
                 } else { // dir_y < 0
-                    prob = 1 - MoveProbMap[x][y];
+                    prob = V0 - MoveProbMap[x][y];
                 }
             }
             break;
@@ -706,9 +733,11 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     char filename[250];
     int i,j;
     long int n;
+    bool filter_occupancy, filter_density, filter_flux;
 
     // Write the occupancy matrix
-    if (track_occupancy && (index == TotalTime || index == -1 || index == 0)) {
+    filter_occupancy = (index == TotalTime || index == -1 || index == 0);
+    if (track_occupancy && filter_occupancy) {
         sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
@@ -723,7 +752,8 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         }
     }
     // Write density
-    if (track_density) {
+    filter_density = (index == TotalTime || index == -1 || index == 0 || (index % 1000) == 0 || (SaveInterval > 0 && index % SaveInterval == 0));
+    if (track_density && filter_density) {
         sprintf(filename,"%s/Density_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
@@ -737,7 +767,8 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
         }
     }
     // Write MovingParticles
-    if (track_flux && ((index % 1000) == 0 || index == -1)) {
+    filter_flux = (index == TotalTime || index == -1 || index == 0 || (index % 1000) == 0);
+    if (track_flux && filter_flux) {
         sprintf(filename,"%s/XAccumulatedFlux_%ld.dat",RunName,index);
         f=fopen(filename,"w");
         if (!f) {
@@ -822,6 +853,7 @@ void ShowUsage(const char* program_name) {
     fprintf(stderr, "  --track-movement            Enable movement tracking as Observable\n");
     fprintf(stderr, "  --gamma VALUE               Gamma parameter for sin potentials (default: -0.5)\n");
     fprintf(stderr, "  --g VALUE                   G parameter for director-uneven-sin (default: 0.3)\n");
+    fprintf(stderr, "  --v0 VALUE                  V0 parameter for potentials (default: 0.5)\n");
     fprintf(stderr, "  --track-occupancy           Track occupancy matrices (default: enabled)\n");
     fprintf(stderr, "  --track-density             Track density calculations\n");
     fprintf(stderr, "  --track-flux                Track movement flux matrices\n");
@@ -1011,6 +1043,7 @@ int main(int argc, char **argv)
     TrackMovement = params.track_movement;
     Gamma = params.gamma;
     G = params.g;
+    V0 = params.v0; // Default value for V0
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
     X_max = 0;
@@ -1062,9 +1095,8 @@ int main(int argc, char **argv)
         Iterate(step);
 
         // Save intermediate steps if save interval is specified
-        if(SaveInterval > 0 && step % SaveInterval == 0) {
-            WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
-        }
+        WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
+        
     }
     WriteConfig(TotalTime, params.track_occupancy, params.track_density, params.track_flux);
 
