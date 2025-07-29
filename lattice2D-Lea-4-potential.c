@@ -199,7 +199,7 @@ double shifted_uneven_sin_for_search(double x) {
 }
 
 double symmetric_sin_for_search(double x) {
-    // Symmetric version: G * sin(x + X_max) + 0.5
+    // Symmetric version: G * sin(x) + 0.5
     return G * sin(x) + 0.5;
 }
 
@@ -215,7 +215,7 @@ void InitializeSinPotentialMap(double (*func)(double), double lower_bound, doubl
     fprintf(stderr, "[PRINT] Golden section search returned invalid x_max: %.6f\n", x_max);
 
     // Find true minimum over [0, 2π] by taking the max of the negative of the function
-    double x_min = golden_section_search_min(negated_func, 0.0, 2 * M_PI, 1e-6);
+    double x_min = golden_section_search_min(func, 0.0, 2 * M_PI, 1e-6);
     double f_min = func(x_min);
     
     // Check if f_max and f_min are valid
@@ -290,7 +290,7 @@ double CalculateMovementProbability(const int x, const int y, const int dir_x, c
             break;
         case 2: // "director-uneven-sin"
         case 3: // "director-symmetric-sin"
-            PotentialLower = - amplitude; // Set lower bound based on amplitude
+            PotentialLower = 0; // Set lower bound based on amplitude
             PotentialUpper = amplitude; // Set upper bound based on amplitude
             if (dir_y == 0) {
                 prob = V0;
@@ -733,7 +733,23 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     char filename[250];
     int i,j;
     long int n;
-    bool filter_occupancy, filter_density, filter_flux;
+    bool filter_occupancy, filter_density, filter_flux, filter_director;
+
+    // Print g aka MoveMap if Potential is director-based
+    filter_director = (PotentialTypeCode == 2 || PotentialTypeCode == 3);
+    if (filter_director && index == 1) {
+        sprintf(filename,"%s/MoveProbgradU_%ld.dat",RunName,index);
+        f=fopen(filename,"w");
+        if (!f) {
+            fprintf(stderr, "[ERROR] Could not open %s for writing the MoveProb = grad U (U is potential)\n", filename);
+        } else {
+            for(i=0;i<Lx;i++)
+            {  
+                fprintf(f,"%.6f ", (double)MoveProbMap[i][0]); // Assuming MoveProbMap is 2D and we want the first row
+            }
+            fclose(f);
+        }
+    }
 
     // Write the occupancy matrix
     filter_occupancy = (index == TotalTime || index == -1 || index == 0);
@@ -815,6 +831,7 @@ typedef struct {
     double potential_lower; // Lower bound for potential (if needed)
     double potential_upper; // Upper bound for potential (if needed)
     long int seed;          // Random seed 
+    double v0;              // Add v0 parameter
 } SimulationParams;
 
 // Initialize default parameters
@@ -949,6 +966,13 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             }
             params->g = atof(argv[++i]);
         }
+        else if (strcmp(argv[i], "--v0") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: --v0 requires a value\n");
+                return -1;
+            }
+            params->v0 = atof(argv[++i]);
+        }
         else if (strcmp(argv[i], "--potential-lower") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Error: --potential-lower requires a value\n");
@@ -1046,7 +1070,6 @@ int main(int argc, char **argv)
     V0 = params.v0; // Default value for V0
     PotentialLower = params.potential_lower;
     PotentialUpper = params.potential_upper;
-    X_max = 0;
 
     // Compute the number of particles (may be overridden if loading from file)
     NParticles=(int)(Density*Lx*Ly);
