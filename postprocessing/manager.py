@@ -14,7 +14,7 @@ from postprocessing.engine import create_discrete_colormap, find_files_in_direct
     create_comparison_grid, create_density_evolution_comparison_grid, \
     create_individual_movement_plot, create_combined_movement_plots, \
     compute_density_profiles_by_step, plot_density_derivative_grid, create_time_evolution_grid, \
-    nw_kernel_regression, compute_flux_profiles_by_step, check_if_at_integration_points_equal, matchup_tumble_rates
+    nw_kernel_regression, compute_flux_profiles_by_step, check_if_at_integration_points_equal, find_move_prob_file
 
 from postprocessing.helper import find_all_roots
 
@@ -505,7 +505,7 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_averaging_step=0, x_min = 0, x_max = 200):
+def compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=0, x_min = 0, x_max = 200):
     
     """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
     gam_exp = []
@@ -524,9 +524,6 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
     output_file = open(output_filename, 'w')
     output_file.write("sim\tfolder\tgamma\tlambda\n")
 
-    # calculate index reference from main to one particle run directory to know which J_exp and which rho_exp to use
-    # length = amount of folders in runs_dir, values are indices of runs_dir_one_particle
-    index_reference = matchup_tumble_rates(runs_dir, runs_dir_one_particle)
     # calculate rho and its derivatives
     steps_to_include = start_averaging_step
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
@@ -534,22 +531,7 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
     # calculate J
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
 
-    # get - integral J/x for case for only one particle
-    step_to_include_one = 0
-    profiles_by_step_density_one = compute_density_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
-    profiles_by_step_flux_one = compute_flux_profiles_by_step(runs_dir_one_particle, step_to_include_one, smooth=True, method=method)
-
-
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
-        # which folder of one particle for this run to use
-        index_one = index_reference[idx]
-        print(f"Index reference for run {idx}: {index_one}")
-        # Debug: print lengths and keys of one-particle profiles
-        print(f"profiles_by_step_density_one has {len(profiles_by_step_density_one)} entries")
-        print(f"profiles_by_step_flux_one has {len(profiles_by_step_flux_one)} entries")
-        print(f"profiles_by_step_density_one keys: {list(profiles_by_step_density_one.keys())}")
-        print(f"profiles_by_step_flux_one keys: {list(profiles_by_step_flux_one.keys())}")
-        print(f"Trying to access index_one={index_one}")
         # load data for this simulation run
         # key is (folder_name, step)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
@@ -561,14 +543,9 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
 
         #print(f"For run number {idx} key for density {key_density} is used")
         J_exp = list(profiles_by_step_flux.values())[idx]  # Get J for the same key
-        #print(f"For run number {idx} key for flux {list(profiles_by_step_flux.keys())[idx]} is used")
-        rho_exp_one, d_rho_exp_one, d2_rho_exp_one = list(profiles_by_step_density_one.values())[index_one]  # Get rho for the same key
-        plt.plot(rho_exp_one, label="rho_exp_one")
-        plt.legend()
-        plt.show()
 
-        J_exp_one = list(profiles_by_step_flux_one.values())[index_one]  # Get J for the same key
-        print("Any zeros in rho_exp_one?", np.any(rho_exp_one == 0))
+        # return contents of first MoveProb file it finds as np array
+        gradU = find_move_prob_file(runs_dir)
 
         A = []
         B = []
@@ -579,15 +556,15 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
             rho_moved = rho_exp - rho_est
             rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
             J_div_rho = J_exp / rho_exp
-            J_div_rho_one = J_exp_one / rho_exp_one
+            J_div_rho_minus_grad_U = J_div_rho - gradU
             print("Any NaN in J_div_rho?", np.isnan(J_div_rho).any())
-            print("Any NaN in J_div_rho_one?", np.isnan(J_div_rho_one).any())
 
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
             print(f"Roots found: {roots}")
-            #plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est={rho_est:.2f}")
-            #plt.show()
+            plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est_moved={rho_est:.2f}")
+            plt.show()
+
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
 
@@ -603,16 +580,14 @@ def compute_gamma_lambda(runs_dir, runs_dir_one_particle, method='diff', start_a
             #plt.show()
 
             # integrals for current
-            J_div_rho_func = interp1d(x_grid, J_div_rho, kind='cubic', fill_value="extrapolate")
-            integral_j, err = quad(J_div_rho_func, a, b)
-            J_div_rho_one_func = interp1d(x_grid, J_div_rho_one, kind='cubic', fill_value="extrapolate")
-            integral_j_one, err = quad(J_div_rho_one_func, a, b)
+            J_div_rho_minus_grad_U_func = interp1d(x_grid, J_div_rho_minus_grad_U, kind='cubic', fill_value="extrapolate")
+            integral_j, err = quad(J_div_rho_minus_grad_U_func, a, b)
 
             # values of A and B
             a0 = -(d2_rho_exp_func(b) - d2_rho_exp_func(a))
             a1 = (d_rho_exp_func(b) ** 2 - d_rho_exp_func(a) ** 2)
             # subtract the one particle current to eliminate potential influence
-            b = - integral_j - integral_j_one
+            b = - integral_j
             A.append([a0, a1])
             B.append(b)
         

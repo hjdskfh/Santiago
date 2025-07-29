@@ -238,7 +238,7 @@ echo "Starting parameter sweep..."
 # Parameter ranges - modify these as needed
 densities=(0.7 0.8 0.9)
 tumble_rates=(0.07 0.08 0.09)
-total_time=500000
+total_time=5000
 start_tumble_rate=0.005
 
 # *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
@@ -248,7 +248,7 @@ start_tumble_rate=0.005
 gamma=-0.5              # Gamma parameter for sin potentials
 g=1                     # G parameter for director-uneven-sin potential
 v0=0.5
-potential_lower=0.1    # Lower bound for potential, UPPER AND LOWER BOUNDS MUST symmetrical around 0.5: # e.g. 0.2 and 0.8 for a range of 0.6
+potential_lower=0.1    # Lower bound for potential, UPPER AND LOWER BOUNDS MUST symmetrical around v0: # e.g. 0.2 and 0.8 for a range of 0.6
 potential_upper=0.9     # Upper bound for potential
 seed=837437             # Random seed (example of new parameter)
 

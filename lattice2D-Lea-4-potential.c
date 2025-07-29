@@ -81,7 +81,6 @@ double golden_section_search_max(double (*func)(double), double a, double b, dou
 double golden_section_search_min(double (*func)(double), double a, double b, double tol);
 double rescaling_function(double (*func)(double), double x, double lower_bound, double upper_bound, double f_max, double f_min);
 static double uneven_sin_for_search(double x);
-static double shifted_uneven_sin_for_search(double x);
 
 // Debug function to print MoveProbMap values to terminal
 // Debug function to print MoveProbMap values to terminal
@@ -193,14 +192,9 @@ static double uneven_sin_for_search(double x) {
     return sin(x) + Gamma * sin(2 * x);
 }
 
-double shifted_uneven_sin_for_search(double x) {
-    // Shifted version: G * (sin(x) + gamma * sin(2 * x)) + 0.5
-    return G * uneven_sin_for_search(x) + 0.5;
-}
-
 double symmetric_sin_for_search(double x) {
-    // Symmetric version: G * sin(x) + 0.5
-    return G * sin(x) + 0.5;
+    // Symmetric version: sin(x)
+    return sin(x);
 }
 
 
@@ -251,7 +245,7 @@ void InitializeUnevenSinMap(double lower_bound, double upper_bound) {
 }
 
 void InitializeDirectorUnevenSinMap(double lower_bound, double upper_bound) {
-    InitializeSinPotentialMap(shifted_uneven_sin_for_search, lower_bound, upper_bound); // bounds not used for this type
+    InitializeSinPotentialMap(uneven_sin_for_search, lower_bound, upper_bound); // bounds not used for this type
 }
 
 void InitializeDirectorSymmetricSinMap(double lower_bound, double upper_bound) {
@@ -314,6 +308,9 @@ double CalculateMovementProbability(const int x, const int y, const int dir_x, c
         fprintf(stderr, "[ERROR] Movement probability is NaN/Inf at (%d,%d): %f\n", x, y, prob);
         exit(1);
     }
+    //if (rand() % 100 < 1) { // Randomly print some values for debugging
+    //    fprintf(stderr, "[DEBUG] Movement probability at (%d,%d): %f\n", x, y, prob);
+    //}
     return prob;
 }
 

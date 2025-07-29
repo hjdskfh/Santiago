@@ -17,5 +17,5 @@ echo ""
 # Assumption for Potential: only input lower and upperbound symmetric around 0.5, maximum at 0
 # Run the initialization script with the new flags
 # Modify the line below to customize your run #uneven-sin, director-uneven-sin, director-symmetric-sin #track-movement, track-density, track-flux
-time ./run_4_potential.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density "$@" 
+time ./run_4_potential.sh --move-prob uneven-sin --track-movement --track-flux --track-density "$@" 
 

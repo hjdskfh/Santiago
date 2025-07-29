@@ -881,30 +881,17 @@ def check_if_at_integration_points_equal(func, a, b, tol=1e-8):
     else:
         print(f"Function values at integration points are acceptable: func({a})={val_a}, func({b})={val_b}")
 
-def matchup_tumble_rates(runs_dir, runs_dir_one_particle):
-    # Get tumble rates of all subfolders in alphabetical (ls) order for one-particle dir
-    subfolders_one = [f for f in sorted(os.listdir(runs_dir_one_particle)) if os.path.isdir(os.path.join(runs_dir_one_particle, f))]
-    tumble_rates_one = []
-    for folder in subfolders_one:
-        _, tumble_rate, *_ = extract_parameters_from_folder(folder)
-        tumble_rates_one.append(tumble_rate)
-    print("Tumble rates in runs_dir_one_particle (ls/alphabetical) order:", tumble_rates_one)
-
-    # Get tumble rates of all subfolders in alphabetical (ls) order for main runs_dir
-    subfolders_main = [f for f in sorted(os.listdir(runs_dir)) if os.path.isdir(os.path.join(runs_dir, f))]
-    tumble_rates_main = []
-    for folder in subfolders_main:
-        _, tumble_rate, *_ = extract_parameters_from_folder(folder)
-        tumble_rates_main.append(tumble_rate)
-    print("Tumble rates in runs_dir (ls/alphabetical) order:", tumble_rates_main)
-
-    # For each tumble rate in main, find the index of the first matching tumble rate in one (allowing repeats)
-    index_reference = []
-    for tr_main in tumble_rates_main:
-        try:
-            idx = tumble_rates_one.index(tr_main)
-        except ValueError:
-            idx = -1  # or None, if you want to indicate not found
-        index_reference.append(idx)
-    print("Index reference from main to one-particle tumble rates:", index_reference)
-    return index_reference
+def find_move_prob_file(runs_dir):
+    folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+    print(f"folders found: {folders}")
+    for folder in folders:
+        moveprob_files = glob.glob(os.path.join(folder, "MoveProbgradU_*.dat"))
+        if moveprob_files:
+            try:
+                data = np.loadtxt(moveprob_files[0])
+                return data
+            except Exception as e:
+                print(f"Error loading {moveprob_files[0]}: {e}")
+                return None
+    print("No MoveProbgradU_*.dat file found in any folder.")
+    return None
