@@ -130,10 +130,8 @@ build_simulation_command() {
     
     cmd="$cmd --potential $MOVE_PROB"
     cmd="$cmd --gamma $gamma"
-    cmd="$cmd --g $g"
     cmd="$cmd --v0 $v0"
-    cmd="$cmd --potential-lower $potential_lower"
-    cmd="$cmd --potential-upper $potential_upper"
+    cmd="$cmd --amplitude $amplitude"
     cmd="$cmd --seed $seed"
     
     # Add flags
@@ -237,8 +235,8 @@ echo "Starting parameter sweep..."
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
 densities=(0.7 0.8 0.9)
-tumble_rates=(0.07 0.08 0.09)
-total_time=5000
+tumble_rates=(0.07 0.08 0.09 0.15 0.2 0.3 0.5 0.7)
+total_time=10000
 start_tumble_rate=0.005
 
 # *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
@@ -246,10 +244,8 @@ start_tumble_rate=0.005
 # Just make sure the C program accepts the --parameter-name format
 
 gamma=-0.5              # Gamma parameter for sin potentials
-g=1                     # G parameter for director-uneven-sin potential
 v0=0.5
-potential_lower=0.1    # Lower bound for potential, UPPER AND LOWER BOUNDS MUST symmetrical around v0: # e.g. 0.2 and 0.8 for a range of 0.6
-potential_upper=0.9     # Upper bound for potential
+amplitude=0.2     # amplitude of deviation from V0
 seed=837437             # Random seed (example of new parameter)
 
 # To add a new parameter:
@@ -273,8 +269,15 @@ for density in "${densities[@]}"; do
             start_save_interval=$(calculate_save_interval "$start_tumble_rate")
         fi
         
+        # change potential used for start configuration
+        ORIGINAL_MOVE_PROB="$MOVE_PROB"
+        MOVE_PROB="uneven-sin"
+
         # Build command for start configuration
         start_cmd=$(build_simulation_command "$density" "$start_tumble_rate" "$total_time" "$start_name" "none" "$start_save_interval")
+        
+        # Restore original MOVE_PROB for main runs
+        MOVE_PROB="$ORIGINAL_MOVE_PROB"
         
         # Log the start command
         log_command "$start_cmd" "$start_name"
@@ -295,7 +298,7 @@ for density in "${densities[@]}"; do
         current_run=$((current_run + 1))
         
         # Create run name and put it in the runs directory
-        run_name="$RUNS_DIR/d${density}_t${tumble_rate}_time${total_time}_gamma${gamma}_g${g}"
+        run_name="$RUNS_DIR/d${density}_t${tumble_rate}_time${total_time}_gamma${gamma}"
         
         echo "[$current_run/$total_runs] Running: density=$density, tumble_rate=$tumble_rate, run_name=$run_name"
         
@@ -354,9 +357,7 @@ echo "  - Density tracking: $TRACK_DENSITY"
 if [ "$MOVE_PROB" = "uneven-sin" ] || [ "$MOVE_PROB" = "director-uneven-sin" ] || [ "$MOVE_PROB" = "director-symmetric-sin" ]; then
     echo "  - Gamma parameter: $gamma"
 fi
-if [ "$MOVE_PROB" = "director-uneven-sin" ] || [ "$MOVE_PROB" = "director-symmetric-sin" ]; then
-    echo "  - G parameter: $g"
-fi
+
 
 # Write final summary to master log
 echo "" >> "$MASTER_LOG"

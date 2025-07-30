@@ -505,9 +505,8 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=0, x_min = 0, x_max = 200):
-    
-    """ Compute gamma and lambda constants for given experimental data, but for lambda and gamma constant."""
+def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200):
+    """ Compute gamma and lambda constants for given experimental data, allowing user to choose end averaging step."""
     gam_exp = []
     lam_exp = []
     erf_exp = []
@@ -519,16 +518,17 @@ def compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=0, x_min 
 
     print("sim", "|" , "gamma", "|" , "lambda")
     # Prepare to write gamma and lambda to a file
-    output_filename = os.path.join('analysis', 'gamma_lambda_results.txt')
-    os.makedirs('analysis', exist_ok=True)
+    output_filename = os.path.join(save_dir, 'gamma_lambda_results.txt')
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     output_file = open(output_filename, 'w')
     output_file.write("sim\tfolder\tgamma\tlambda\n")
 
-    # calculate rho and its derivatives
-    steps_to_include = start_averaging_step
+    # Use both start and end step for averaging
+    if end_averaging_step is not None:
+        steps_to_include = (start_averaging_step, end_averaging_step)
+    else:
+        steps_to_include = start_averaging_step
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
-    
-    # calculate J
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
@@ -537,9 +537,9 @@ def compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=0, x_min 
         rho_exp, d_rho_exp, d2_rho_exp = value_density
         print(f"rho_exp: {rho_exp.shape}")
         print("Any zeros in rho_exp?", np.any(rho_exp == 0))
-        plt.plot(rho_exp, label="rho_exp")
-        plt.legend()
-        plt.show()
+        #plt.plot(rho_exp, label="rho_exp")
+        #plt.legend()
+        #plt.show()
 
         #print(f"For run number {idx} key for density {key_density} is used")
         J_exp = list(profiles_by_step_flux.values())[idx]  # Get J for the same key
@@ -562,8 +562,10 @@ def compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=0, x_min 
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
             print(f"Roots found: {roots}")
-            plt.plot(rho_moved_interp(np.linspace(x_min, x_max, 100)), label=f"rho_est_moved={rho_est:.2f}")
-            plt.show()
+            plt.figure()
+            plt.plot(rho_exp, label=f"rho_est_moved={rho_est:.2f}")
+            plt.savefig(f"analysis/rho_moved_{idx}.png")
+            plt.close()
 
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max

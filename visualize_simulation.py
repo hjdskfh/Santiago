@@ -86,17 +86,21 @@ if __name__ == "__main__":
         if mode_choice == '1':
             while True:
                 try:
-                    number_input = input("Enter the occupancy file number to analyze (e.g., 10000 for final, -1 for initial): ").strip()
-                    number = int(number_input)
+                    number_input = input("Enter the occupancy file number(s) to analyze (e.g., 10000 for final, -1 for initial, or comma-separated list like 1,10,100): ").strip()
+                    number_list = [int(n.strip()) for n in number_input.split(',') if n.strip()]
                     break
                 except ValueError:
-                    print("Please enter a valid integer.")
-            print(f"Analyzing occupancy files with number: {number}")
-            create_parameter_sweep_visualization(runs_dir, number=number, save_dir=analysis_dir)
-            print("Visualization complete!")
+                    print("Please enter valid integer(s), separated by commas if multiple.")
+            print(f"Analyzing occupancy files with number(s): {number_list}")
+            for number in number_list:
+                print(f"Creating comparison grid for step: {number}")
+                create_parameter_sweep_visualization(runs_dir, number=number, save_dir=analysis_dir)
+            print("Visualization(s) complete!")
+
         elif mode_choice == '2':
             create_parameter_sweep_visualization(runs_dir, process_all_times=True, save_dir=analysis_dir)
             print("All visualizations complete!")
+
         elif mode_choice == '3':
             while True:
                 try:
@@ -109,6 +113,7 @@ if __name__ == "__main__":
             save_dir = os.path.join(analysis_dir, "start_heatmaps") if save_choice == 'y' else None
             print_multiple_heatmaps(runs_dir, time_step=time_step, save_dir=save_dir, prefix_filter="START_")
             print("START heatmaps complete!")
+
         elif mode_choice == '4':
             while True:
                 try:
@@ -223,27 +228,27 @@ if __name__ == "__main__":
             else:
                 print(f"Calculating {kind_of_derivative} density derivatives.")
                 analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
+        
         elif mode_choice == '10':
             use_defaults = True  # Change to False if you want to re-enable input
             if use_defaults:
-                start_averaging_step = 20000  # Example default steps
+                start_averaging_step = 100  # Example default steps
+                end_averaging_step = 400    # Example default end step
             else:
                 while True:
                     try:
-                        step_input = input("Enter one timestep to analyze (0 or multiples of 1000): ").strip()
-                        if step_input == "0":
-                            step_list = [0]
-                        else:
-                            step_list = list(map(int, step_input.split(",")))
-                        if all(step % 1000 == 0 for step in step_list):
+                        step_input = input("Enter start and end timestep to analyze (e.g., 10000,40000): ").strip()
+                        steps = list(map(int, step_input.split(",")))
+                        if len(steps) == 2 and all(step % 1000 == 0 for step in steps):
+                            start_averaging_step, end_averaging_step = steps
                             break
                         else:
-                            print("Invalid input. Please enter 0 or multiples of 1000.")
+                            print("Invalid input. Please enter two steps, both multiples of 1000, separated by a comma.")
                     except ValueError:
-                        print("Invalid input. Please enter a valid timestep.")
-            save_dir = os.path.join(analysis_dir, f"results_gamma_lambda_{start_averaging_step}")
+                        print("Invalid input. Please enter valid timesteps.")
+            save_dir = os.path.join(analysis_dir, f"results_gamma_lambda_{start_averaging_step}_to_{end_averaging_step}")
             os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-            compute_gamma_lambda(runs_dir, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+            compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step=start_averaging_step, end_averaging_step=end_averaging_step, x_min=0, x_max=200)
 
     # End to measure execution time
     end_time = time.time()

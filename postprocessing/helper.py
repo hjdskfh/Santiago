@@ -75,7 +75,7 @@ def nw_second_derivative(x_eval, x_train, y_train, mu):
         d2N = np.sum(d2w * y_train)
         d2D = np.sum(d2w)
 
-        num = d2N * denominator**2 - 2 * dN * denominator* dD + 2 * nominator* dD**2 - nominator* d2D
+        num = d2N * denominator**2 - 2 * dN * denominator* dD + 2 * nominator* dD**2 - nominator* d2D * denominator
         denom = denominator**3
         d2y_pred.append(num / denom)
     return np.array(d2y_pred)

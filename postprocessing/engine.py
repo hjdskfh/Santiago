@@ -336,12 +336,15 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     
     # Extract potential type from run directory name
     potential_type = None
-    if "uneven-sin" in run_date:
-        potential_type = "Potential 1: Uneven sinusoidal move probability"
-    elif "director-based-sin" in run_date:
-        potential_type = "Potential 2: Director based move probability (uneven sinus)"
+    
+    if "director-uneven-sin" in run_date:
+        potential_type = "Director based move probability (uneven sinus)"
+    elif "director-symmetric-sin" in run_date:
+        potential_type = "Director based move probability (symmetric sinus)"
+    elif "uneven-sin" in run_date:
+        potential_type = "Uneven sinusoidal move probability"
     elif "default" in run_date:
-        potential_type = "No potential (move probability = 1)"
+        potential_type = "No potential (move probability = v0 (0.5 as default))"
     
     # Add potential type to parameter string
     if potential_type:
@@ -364,11 +367,13 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     
     folder = result['folder']
     folder_name = os.path.basename(folder)
+    # Include depicted step in the filename if available
+    step_str = f"_step{number}" if number is not None else ""
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        output_file = f'{save_dir}/comparison_grid_acc_{folder_name}.png'
+        output_file = f'{save_dir}/comparison_grid_acc_{folder_name}{step_str}.png'
     else:
-        output_file = f'{folder}/comparison_grid_acc_.png'
+        output_file = f'{folder}/comparison_grid_acc_{step_str}.png'
     
     print(f"Saving comparison grid to '{output_file}'")
 
