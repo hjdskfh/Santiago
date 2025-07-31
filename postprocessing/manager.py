@@ -505,8 +505,9 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200):
-    """ Compute gamma and lambda constants for given experimental data, allowing user to choose end averaging step."""
+def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200):
+    """ Compute gamma and lambda constants for given experimental data."""
+   
     gam_exp = []
     lam_exp = []
     erf_exp = []
@@ -524,25 +525,27 @@ def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step
     output_file.write("sim\tfolder\tgamma\tlambda\n")
 
     # Use both start and end step for averaging
-    if end_averaging_step is not None:
-        steps_to_include = (start_averaging_step, end_averaging_step)
-    else:
-        steps_to_include = start_averaging_step
+    steps_to_include = start_averaging_step
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
         # load data for this simulation run
         # key is (folder_name, step)
+        print("key_density:", key_density)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
         print(f"rho_exp: {rho_exp.shape}")
         print("Any zeros in rho_exp?", np.any(rho_exp == 0))
-        #plt.plot(rho_exp, label="rho_exp")
-        #plt.legend()
-        #plt.show()
+        plt.figure()
+        plt.plot(rho_exp, label=f"rho_exp")
+        plt.savefig(f"{save_dir}/rho_exp_{idx}.png")
+        plt.close()
 
-        #print(f"For run number {idx} key for density {key_density} is used")
-        J_exp = list(profiles_by_step_flux.values())[idx]  # Get J for the same key
+        # Get J for the same key
+        J_exp = profiles_by_step_flux.get(key_density)
+        if J_exp is None:
+            print(f"[Warning] No flux profile for {key_density}, skipping.")
+            continue
 
         # return contents of first MoveProb file it finds as np array
         gradU = find_move_prob_file(runs_dir)
@@ -562,10 +565,7 @@ def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
             print(f"Roots found: {roots}")
-            plt.figure()
-            plt.plot(rho_exp, label=f"rho_est_moved={rho_est:.2f}")
-            plt.savefig(f"analysis/rho_moved_{idx}.png")
-            plt.close()
+            
 
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
@@ -574,8 +574,8 @@ def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step
             d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
             d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
 
-            check_if_at_integration_points_equal(d_rho_exp_func, a, b)
-            check_if_at_integration_points_equal(d2_rho_exp_func, a, b)
+            check_if_at_integration_points_equal(save_dir, d_rho_exp_func, d_rho_exp, a, b)
+            check_if_at_integration_points_equal(save_dir, d2_rho_exp_func, d2_rho_exp, a, b)
 
             #plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
             #plt.legend()
@@ -624,3 +624,127 @@ def compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step
 
     output_file.close()
     print(f"Gamma and lambda results written to {output_filename}")
+
+
+def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200):
+    """ Compute gamma and lambda constants for given experimental data, allowing user to choose end averaging step."""
+    
+    a0_exp = []
+    a1_exp = []
+
+    # I added that
+    rho_min = 1
+    rho_max = 1.75
+    rho_est_arr = np.linspace(rho_min, rho_max, 10)
+
+    print("sim", "|" , "gamma", "|" , "lambda")
+    # Prepare to write gamma and lambda to a file
+    output_filename = os.path.join(save_dir, 'gamma_lambda_results.txt')
+    os.makedirs(os.path.dirname(output_filename), exist_ok=True)
+    output_file = open(output_filename, 'w')
+    output_file.write("sim\tfolder\tgamma\tlambda\n")
+
+    # Use both start and end step for averaging
+    steps_to_include = start_averaging_step
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+
+    for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
+        # load data for this simulation run
+        print("key_density:", key_density)
+        rho_exp, d_rho_exp, d2_rho_exp = value_density
+        plt.figure()
+        plt.plot(rho_exp, label=f"rho_exp")
+        plt.savefig(f"{save_dir}/rho_exp_{idx}.png")
+        plt.close()
+
+        J_exp = profiles_by_step_flux.get(key_density)
+        if J_exp is None:
+            print(f"[Warning] No flux profile for {key_density}, skipping.")
+            continue
+
+        # return contents of first MoveProb file it finds as np array
+        gradU = find_move_prob_file(runs_dir)
+        # alt
+        rho = rho_exp[i]
+        J = J_exp[i]
+        gs = gs_exp[i]
+        
+        # non-parametric functions
+        rho_non_par = lambda X: m(X, x, rho)
+        j_non_par = lambda X: m(X, x, J)
+        rho_g = lambda X: rho_non_par(X) * g_x(X, gs)
+        
+        # derivative rho
+        d_rho = np.gradient(rho_non_par(x_smooth), x_smooth)
+        d_rho_non_par = lambda X: m(X, x_smooth, d_rho)
+
+        d2_rho = np.gradient(np.gradient(rho_non_par(x_smooth), x_smooth), x_smooth)
+        d2_rho_non_par = lambda X: m(X, x_smooth, d2_rho)
+
+        # plt.figure()
+        # plt.plot(x, rho_non_par(x))
+        # plt.plot(x, d_rho_non_par(x))
+        # plt.plot(x, d2_rho_non_par(x))
+
+        for rho_est in rho_est_arr:
+            
+            rho_zero = lambda X: rho_non_par(X) - rho_est
+            rho_j = lambda X: j_non_par(X) / rho_non_par(X)
+
+            # determination of integration limits
+            a = brentq(rho_zero, 0, 180) # left limit
+            b = brentq(rho_zero, 180, 400) # right limit
+
+            # integrals for current
+            integral_j, err = quad(rho_j, a, b)
+            integral_rho_g, err = quad(g_x, a, b, args=gs)
+
+            # values of A and B
+            a0 = -(d2_rho_non_par(b) - d2_rho_non_par(a))
+            a1 = (d_rho_non_par(b) ** 2 - d_rho_non_par(a) ** 2)
+            b = -integral_j - integral_rho_g
+
+            a0_exp.append(a0[0] / b)
+            a1_exp.append(a1[0] / b)
+        
+
+    # System of equations
+
+    # Matrix build
+    N = len(rho_est_arr) # number of rho evaluated
+    M = N_sims # number of simulations
+
+    A = np.zeros((M*N, 2*N))
+
+    print(len(a0_exp))
+
+    for i in range(N): # Recorre rho
+        for k in range(M): # Recorre experimentos
+            A[k + i*M, 2*i] = a0_exp[k * N + i]
+            A[k + i*M, 2*i+1] = a1_exp[k * N + i]
+
+    d = np.ones(M*N)
+
+    # Descomposición SVD: A = U @ S @ Vt
+
+    U, s, Vt = np.linalg.svd(A, full_matrices=False)
+    S = np.diag(s)
+
+    #Encontrar lambda y gamma
+    # Resolver sistema A * b = d para b
+
+    V = np.transpose(Vt)
+    Ut = np.transpose(U)
+    S_1 = np.diag(1/s)
+
+    b = V @ S_1 @ Ut @ d
+
+    eta = np.zeros(N)
+    gam = np.zeros(N)
+
+    for i in range(N):
+        gam[i] = b[2 * i]
+        eta[i] = b[2 * i + 1]
+
+    cov = V @ np.diag(1 / s ** 2) @ V.T

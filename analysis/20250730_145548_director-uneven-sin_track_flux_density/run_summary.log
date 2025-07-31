@@ -1,0 +1,35 @@
+# Parameter sweep run started on Wed Jul 30 14:55:48 -04 2025
+# Working directory: /Users/leabauer/Documents/code
+# Git commit: 05c62bf5bba4b1642bbaf5faacbd83b4982a0a0c
+# Command line: ./run_4_potential.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density
+
+[1/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [1/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[2/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [2/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[3/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [3/9] ./lattice2D-Lea-4-potential --density 0.7 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.7_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[4/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [4/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[5/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [5/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[6/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [6/9] ./lattice2D-Lea-4-potential --density 0.8 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.8_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[7/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [7/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.09 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.09_time500000_gamma-0.5 --save-interval 11 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[8/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [8/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.11 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.11_time500000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+[9/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+SUCCESS: [9/9] ./lattice2D-Lea-4-potential --density 0.9 --tumble-rate 0.13 --total-time 500000 --run-name runs/run_20250730_145548_director-uneven-sin_track_flux_density/d0.9_t0.13_time500000_gamma-0.5 --save-interval 8 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.1 --seed 837437 --track-movement --track-flux --track-density
+
+# Parameter sweep completed on Wed Jul 30 15:29:45 -04 2025
+# Total runs: 9
+# Configuration:
+#   - Movement probability type: director-uneven-sin
+#   - Start config: false
+#   - Save interval: auto
+#   - Movement tracking: 1
+#   - Flux tracking: 1
+#   - Density tracking: 1
+#   - Gamma parameter: -0.5
+#   - G parameter: 

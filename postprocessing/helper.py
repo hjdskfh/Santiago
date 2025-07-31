@@ -79,3 +79,23 @@ def nw_second_derivative(x_eval, x_train, y_train, mu):
         denom = denominator**3
         d2y_pred.append(num / denom)
     return np.array(d2y_pred)
+
+def plot_file(runs_dir, name="MoveProbgradU", save_dir="analysis"):
+    folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+    for folder in folders:
+        files = glob.glob(os.path.join(folder, f"{name}_*.dat"))
+        if files:
+            data_file = files[0]
+            break
+    if data_file:
+        arr = np.loadtxt(data_file)
+        plt.figure()
+        plt.plot(arr)
+        plt.title(f"Data from {data_file}")
+        plt.xlabel("Index")
+        plt.ylabel("Value")
+        plt.savefig(os.path.join(save_dir, f"{name}_plot.png"))
+        plt.close()
+        print(f"MoveProb map plot saved to {os.path.join(save_dir, f'{name}_plot.png')}")
+    else:
+        print(f"No {name}_*.dat file found for plotting.")

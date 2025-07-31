@@ -878,9 +878,24 @@ def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=No
             profiles_by_step[(folder_name, step)] = (smoothed)
     return profiles_by_step
 
-def check_if_at_integration_points_equal(func, a, b, tol=1e-8):
-    val_a = func(a)
-    val_b = func(b)
+def check_if_at_integration_points_equal(save_dir, func_interp, func, a, b, tol=1e-8):
+    val_a = func_interp(a)
+    val_b = func_interp(b)
+    # Plot the function between a and b and save to savedir
+    x_plot = np.linspace(a, b, 200)
+    y_plot = func_interp(x_plot)
+    plt.figure()
+    plt.plot(x_plot, y_plot)
+    plt.scatter([a, b], [val_a, val_b], color='red', label='Integration points')
+    plt.title(f'Function between integration points a={a}, b={b}')
+    plt.xlabel('x')
+    plt.ylabel('func(x)')
+    plt.legend()
+    save_dir = 'analysis'  # Default save directory
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir, exist_ok=True)
+    plt.savefig(os.path.join(save_dir, f'{func.__name__}_integration_points_{a:.2f}_{b:.2f}.png'))
+    plt.close()
     if abs(val_a - val_b) < tol:
         raise ValueError(f"Function values at integration points are too close: func({a})={val_a}, func({b})={val_b}")
     else:

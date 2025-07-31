@@ -9,8 +9,8 @@ import bisect
 
 from postprocessing.manager import create_parameter_sweep_visualization, \
     print_multiple_heatmaps, print_single_heatmap, visualize_time_evolution, \
-    print_moving_particles, visualize_density_evolution_stacked, analyze_density_derivatives_grid, compute_gamma_lambda
-
+    print_moving_particles, visualize_density_evolution_stacked, analyze_density_derivatives_grid, compute_gamma_lambda_constant
+from postprocessing.helper import plot_file
 
 if __name__ == "__main__":
     import time
@@ -68,22 +68,24 @@ if __name__ == "__main__":
     print("7. Visualize the observable number of moving particles to determine timestep to start averaging")
     print("8. Create 2D stacked density evolution over the timesteps")
     print("9. Visualize density derivatives for smoothed densities starting from one or several averaging timesteps in a grid")
-    print("10. Calculate lambda and gamma for smoothed densities starting from one or several averaging timesteps in a grid (smoothing activated, results printed)")
+    print("10. Lambda and Gamma constant: Calculate lambda and gamma for smoothed densities starting from one or several averaging timesteps in a grid (smoothing activated, results printed)")
+    print("11. Lambda and Gamma density dependent: Calculate lambda and gamma for density dependent smoothed densities starting from one or several averaging timesteps in a grid (smoothing activated, results printed)")
 
     while True:
         try:
-            mode_choice = input("\nEnter your choice (1-10, or comma-separated for multiple): ").strip()
-            mode_choices = [c.strip() for c in mode_choice.split(',') if c.strip() in [str(i) for i in range(1, 11)]]
+            mode_choice = input("\nEnter your choice (1-11, or comma-separated for multiple): ").strip()
+            mode_choices = [c.strip() for c in mode_choice.split(',') if c.strip() in [str(i) for i in range(1, 12)]]
             if mode_choices:
                 break
             else:
-                print("Please enter a number from 1-10, or a comma-separated list like 1,7,9,10.")
+                print("Please enter a number from 1-11, or a comma-separated list like 1,7,9,10.")
         except KeyboardInterrupt:
             print("\nExiting...")
             exit(0)
     
     for mode_choice in mode_choices:
         if mode_choice == '1':
+            save_dir = os.path.join(analysis_dir, f"comparison_grids")
             while True:
                 try:
                     number_input = input("Enter the occupancy file number(s) to analyze (e.g., 10000 for final, -1 for initial, or comma-separated list like 1,10,100): ").strip()
@@ -94,11 +96,11 @@ if __name__ == "__main__":
             print(f"Analyzing occupancy files with number(s): {number_list}")
             for number in number_list:
                 print(f"Creating comparison grid for step: {number}")
-                create_parameter_sweep_visualization(runs_dir, number=number, save_dir=analysis_dir)
-            print("Visualization(s) complete!")
+                create_parameter_sweep_visualization(runs_dir, number=number, save_dir=save_dir)
+                print("Visualization(s) complete!")
 
         elif mode_choice == '2':
-            create_parameter_sweep_visualization(runs_dir, process_all_times=True, save_dir=analysis_dir)
+            create_parameter_sweep_visualization(runs_dir, process_all_times=True, save_dir=save_dir)
             print("All visualizations complete!")
 
         elif mode_choice == '3':
@@ -141,25 +143,36 @@ if __name__ == "__main__":
             else:
                 print(f"File not found: {file_path}")
         elif mode_choice == '6':
-            dir_path = input("Enter path to specific configuration folder: ").strip()
-            if os.path.exists(dir_path):
-                save_choice = input("Save images and animation? (y/n): ").strip().lower()
-                save_dir = os.path.join(analysis_dir, "time_evolution") if save_choice == 'y' else None
-                show_choice = input("Show individual frames? (y/n): ").strip().lower()
-                show_individual = show_choice == 'y'
-                visualize_time_evolution(dir_path, save_dir=save_dir, show_individual=show_individual)
-                print("Time evolution visualization complete!")
+            use_defaults = True
+            if use_defaults:
+                save_choice = 'y'
+                show_choice = 'n'
             else:
-                print(f"Directory not found: {dir_path}")
+                save_choice = input("Save images and animation? (y/n): ").strip().lower()
+                show_choice = input("Show individual frames? (y/n): ").strip().lower()
+
+            save_dir = os.path.join(analysis_dir, "time_evolution") if save_choice == 'y' else None
+            show_individual = show_choice == 'y'
+            visualize_time_evolution(runs_path, save_dir=save_dir, show_individual=show_individual)
+            print("Time evolution visualization complete!")
+
         elif mode_choice == '7':
             print("Analyzing movement statistics...")
             analysis_dir_movement = os.path.join(analysis_dir, "moving_particles_statistics")
             print_moving_particles(runs_dir, save_dir=analysis_dir_movement)
+
         elif mode_choice == '8':
-            save_choice = input("Save stacked density evolution images to file? (y/n): ").strip().lower()
-            save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
-            show_choice = input("Show individual parameter combinations? (y/n): ").strip().lower()
+            use_defaults = True  # Change to False if you want to re-enable input
+            if use_defaults:
+                save_choice = 'y'
+                show_choice = 'y'
+            else:
+                save_choice = input("Save stacked density evolution images to file? (y/n): ").strip().lower()
+                show_choice = input("Show individual parameter combinations? (y/n): ").strip().lower()
+                
+            save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else analysis_dir
             show_individual = show_choice == 'y'
+
             print("Creating 2D stacked density evolution visualization...")
             visualize_density_evolution_stacked(
                 runs_dir,
@@ -169,15 +182,13 @@ if __name__ == "__main__":
                 run_date=run_date
             )
             print("2D stacked density evolution complete!")
+
         elif mode_choice == '9':
             use_defaults = True  # Change to False if you want to re-enable input
             if use_defaults:
                 step_list = list(range(1000, 50001, 7000))  # Example default steps
                 kind_of_derivative = 'both'
                 smooth_choice = 'y'
-                smooth_density = smooth_choice == 'y'
-                save_choice = 'y'
-                save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
             else:
                 while True:
                     try:
@@ -213,8 +224,11 @@ if __name__ == "__main__":
                 kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
                 print(f"Calculating density derivatives using method: {kind_of_derivative}")
                 smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
-                smooth_density = smooth_choice == 'y'
+            
             save_choice = 'y'
+            save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
+            smooth_density = smooth_choice == 'y'
+
             title_steps = "steps_" + "_".join(map(str, step_list))
             if save_choice == 'y' and smooth_choice == 'y':
                 save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_{kind_of_derivative}_{title_steps}_smoothing")
@@ -231,24 +245,60 @@ if __name__ == "__main__":
         
         elif mode_choice == '10':
             use_defaults = True  # Change to False if you want to re-enable input
+            print("[DEBUG] Entered mode 10: Lambda and Gamma constant calculation.")
             if use_defaults:
-                start_averaging_step = 100  # Example default steps
-                end_averaging_step = 400    # Example default end step
+                print(f"[DEBUG] Using default start_averaging_step: {5000}")
+                start_averaging_step = 5000  # Example default steps
+                print(f"[DEBUG] Searching for density files in {runs_dir}")
+                density_files = glob.glob(os.path.join(runs_dir, '**', 'Density_*.dat'), recursive=True)
+                print(f"[DEBUG] Found {len(density_files)} density files.")
+                if density_files:
+                    # Limit to first 1000 files for debug/performance
+                    limited_density_files = density_files[:1000]
+                    steps_found = [int(re.search(r'Density_(\d+)\.dat', os.path.basename(f)).group(1)) for f in limited_density_files if re.search(r'Density_(\d+)\.dat', os.path.basename(f))]
+                    print(f"[DEBUG] Parsed steps from first {len(limited_density_files)} files: {steps_found[:10]} ... (showing first 10)")
+                else:
+                    print("[ERROR] No density files found in the specified runs directory.")
+                    raise FileNotFoundError("No density files found in the specified runs directory.")
+                method_input = 'both'  # do both methods
             else:
                 while True:
                     try:
-                        step_input = input("Enter start and end timestep to analyze (e.g., 10000,40000): ").strip()
-                        steps = list(map(int, step_input.split(",")))
-                        if len(steps) == 2 and all(step % 1000 == 0 for step in steps):
-                            start_averaging_step, end_averaging_step = steps
+                        step_input = input("Enter start timestep to analyze (e.g., 10000): ").strip()
+                        start_averaging_step = int(step_input)
+                        print(f"[DEBUG] User entered start_averaging_step: {start_averaging_step}")
+                        if start_averaging_step % 1000 == 0:
                             break
                         else:
-                            print("Invalid input. Please enter two steps, both multiples of 1000, separated by a comma.")
+                            print("Invalid input. Please enter a step that is a multiple of 1000.")
                     except ValueError:
-                        print("Invalid input. Please enter valid timesteps.")
-            save_dir = os.path.join(analysis_dir, f"results_gamma_lambda_{start_averaging_step}_to_{end_averaging_step}")
-            os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-            compute_gamma_lambda(runs_dir, save_dir, method='diff', start_averaging_step=start_averaging_step, end_averaging_step=end_averaging_step, x_min=0, x_max=200)
+                        print("Invalid input. Please enter a valid timestep.")
+                method_input = input("Choose method for lambda and gamma calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
+                print(f"[DEBUG] User selected method: {method_input}")
+            if method_input not in ['kernel', 'diff', 'both']:
+                print("Invalid method choice. Defaulting to 'both'.")
+                method_input = 'both'
+            save_dir_diff = os.path.join(analysis_dir, f"results_gamma_lambda_diff_{start_averaging_step}")
+            save_dir_kernel = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_{start_averaging_step}")
+            print(f"[DEBUG] Save directories: kernel={save_dir_kernel}, diff={save_dir_diff}")
+            os.makedirs(os.path.dirname(save_dir_kernel), exist_ok=True)
+            os.makedirs(os.path.dirname(save_dir_diff), exist_ok=True)
+            if method_input == 'both':
+                print("[DEBUG] Calculating both Gaussian kernel and finite difference gamma/lambda constants.")
+                compute_gamma_lambda_constant(runs_dir, save_dir_kernel, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+                compute_gamma_lambda_constant(runs_dir, save_dir_diff, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+            else:
+                print(f"[DEBUG] Calculating gamma/lambda constants with method: {method_input}")
+                compute_gamma_lambda_constant(runs_dir, save_dir_kernel if method_input == 'kernel' else save_dir_diff, method=method_input, start_averaging_step=start_averaging_step, x_min=0, x_max=200)
+
+            # After gamma/lambda calculation, plot MoveProbgradU file
+            print(f"[DEBUG] Plotting MoveProbgradU file to save_dir: {save_dir_kernel if method_input == 'kernel' else save_dir_diff}")
+            plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel if method_input == 'kernel' else save_dir_diff)
+            print("[DEBUG] Gamma and Lambda calculation complete!")
+
+        elif mode_choice == '11':
+            pass
+
 
     # End to measure execution time
     end_time = time.time()
@@ -256,4 +306,3 @@ if __name__ == "__main__":
 
     print(f"Execution time: {elapsed:.4f} seconds")
 
-    

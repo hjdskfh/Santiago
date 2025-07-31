@@ -235,8 +235,8 @@ echo "Starting parameter sweep..."
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
 densities=(0.7 0.8 0.9)
-tumble_rates=(0.07 0.08 0.09 0.15 0.2 0.3 0.5 0.7)
-total_time=10000
+tumble_rates=(0.09 0.11 0.13)
+total_time=500000
 start_tumble_rate=0.005
 
 # *** ADD ALL YOUR SIMULATION PARAMETERS HERE ***
@@ -245,7 +245,7 @@ start_tumble_rate=0.005
 
 gamma=-0.5              # Gamma parameter for sin potentials
 v0=0.5
-amplitude=0.2     # amplitude of deviation from V0
+amplitude=0.1     # amplitude of deviation from V0
 seed=837437             # Random seed (example of new parameter)
 
 # To add a new parameter:
