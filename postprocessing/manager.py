@@ -420,8 +420,7 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
                 'dir_name': dir_name,
                 'density_2d': density_2d,
                 'time_steps': time_steps,
-                'gamma': gamma,
-                'g': g
+                'gamma': gamma
             })
         
         # Create individual visualization
@@ -448,8 +447,7 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
                 title += f"ρ={density_param:.3f}, α={tumble_rate:.3f}"
                 if gamma is not None:
                     title += f", γ={gamma:.3f}"
-                if g is not None:
-                    title += f", g={g:.3f}"
+   
             else:
                 title = f"Density Evolution: {dir_name}"
             
@@ -460,18 +458,7 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
             cbar.set_label('Density Value', fontsize=14, fontweight='bold')
             
             # Add grid for better readability
-            ax.grid(True, alpha=0.3, linestyle='--')
-            
-            # Add statistics as text
-            mean_val = np.mean(density_2d)
-            std_val = np.std(density_2d)
-            min_val = np.min(density_2d)
-            max_val = np.max(density_2d)
-            
-            stats_text = f'μ={mean_val:.3f}\nσ={std_val:.3f}\nmin={min_val:.3f}\nmax={max_val:.3f}'
-            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
-                   verticalalignment='top', fontsize=12,
-                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.9))
+            ax.grid(True, alpha=0.3, linestyle='--')           
             
             plt.tight_layout()
             
@@ -519,7 +506,7 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
 
     print("sim", "|" , "gamma", "|" , "lambda")
     # Prepare to write gamma and lambda to a file
-    output_filename = os.path.join(save_dir, 'gamma_lambda_results.txt')
+    output_filename = os.path.join(save_dir, f'gamma_lambda_results_{method}_constant.txt')
     os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     output_file = open(output_filename, 'w')
     output_file.write("sim\tfolder\tgamma\tlambda\n")
@@ -532,13 +519,12 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
         # load data for this simulation run
         # key is (folder_name, step)
-        print("key_density:", key_density)
+        save_dir_rho = os.path.join(save_dir, "rho")
+        os.makedirs(save_dir_rho, exist_ok=True)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
-        print(f"rho_exp: {rho_exp.shape}")
-        print("Any zeros in rho_exp?", np.any(rho_exp == 0))
         plt.figure()
         plt.plot(rho_exp, label=f"rho_exp")
-        plt.savefig(f"{save_dir}/rho_exp_{idx}.png")
+        plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
         plt.close()
 
         # Get J for the same key
@@ -560,12 +546,11 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
             rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
             J_div_rho = J_exp / rho_exp
             J_div_rho_minus_grad_U = J_div_rho - gradU
-            print("Any NaN in J_div_rho?", np.isnan(J_div_rho).any())
+            if np.isnan(J_div_rho_minus_grad_U).any():
+                print(f"[Warning] NaN values found in J_div_rho_minus_grad_U for {key_density}, skipping.")
 
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
-            print(f"Roots found: {roots}")
-            
 
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
@@ -596,16 +581,7 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
         A = np.array(A)
         B = np.array(B)
 
-        print("A:", A)
-        print("B:", B)
-        print("Any NaN in A?", np.isnan(A).any())
-        print("Any NaN in B?", np.isnan(B).any())
-
         U, s, Vh = svd(A, full_matrices=False)
-
-        print("U:", U)
-        print("s:", s)
-        print("Vh:", Vh)
 
         gam, lam = Vh.T @ np.diag(1 / s) @ U.T @ B
         gam_exp.append(round(gam, 2))
@@ -639,7 +615,7 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
 
     print("sim", "|" , "gamma", "|" , "lambda")
     # Prepare to write gamma and lambda to a file
-    output_filename = os.path.join(save_dir, 'gamma_lambda_results.txt')
+    output_filename = os.path.join(save_dir, f'gamma_lambda_results_{method}_densitydep.txt')
     os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     output_file = open(output_filename, 'w')
     output_file.write("sim\tfolder\tgamma\tlambda\n")
@@ -647,15 +623,18 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
     # Use both start and end step for averaging
     steps_to_include = start_averaging_step
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    print(f"[DEBUG] profiles_by_step_density has {len(profiles_by_step_density)} entries.")
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    print(f"[DEBUG] profiles_by_step_flux has {len(profiles_by_step_flux)} entries.")
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
-        # load data for this simulation run
-        print("key_density:", key_density)
+        print(f"[DEBUG] Processing key_density: {key_density}")
+        save_dir_rho = os.path.join(save_dir, "rho")
+        os.makedirs(save_dir_rho, exist_ok=True)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
         plt.figure()
         plt.plot(rho_exp, label=f"rho_exp")
-        plt.savefig(f"{save_dir}/rho_exp_{idx}.png")
+        plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
         plt.close()
 
         J_exp = profiles_by_step_flux.get(key_density)
@@ -663,57 +642,47 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
             print(f"[Warning] No flux profile for {key_density}, skipping.")
             continue
 
-        # return contents of first MoveProb file it finds as np array
-        gradU = find_move_prob_file(runs_dir)
-        # alt
-        rho = rho_exp[i]
-        J = J_exp[i]
-        gs = gs_exp[i]
-        
-        # non-parametric functions
-        rho_non_par = lambda X: m(X, x, rho)
-        j_non_par = lambda X: m(X, x, J)
-        rho_g = lambda X: rho_non_par(X) * g_x(X, gs)
-        
-        # derivative rho
-        d_rho = np.gradient(rho_non_par(x_smooth), x_smooth)
-        d_rho_non_par = lambda X: m(X, x_smooth, d_rho)
-
-        d2_rho = np.gradient(np.gradient(rho_non_par(x_smooth), x_smooth), x_smooth)
-        d2_rho_non_par = lambda X: m(X, x_smooth, d2_rho)
-
-        # plt.figure()
-        # plt.plot(x, rho_non_par(x))
-        # plt.plot(x, d_rho_non_par(x))
-        # plt.plot(x, d2_rho_non_par(x))
+        print(f"[DEBUG] Found flux profile for {key_density}.")
+        gradU = find_move_prob_file(runs_dir)  
+        print(f"[DEBUG] gradU shape: {np.shape(gradU)}")
 
         for rho_est in rho_est_arr:
-            
-            rho_zero = lambda X: rho_non_par(X) - rho_est
-            rho_j = lambda X: j_non_par(X) / rho_non_par(X)
+            x_grid = np.linspace(0, 200, len(rho_exp))
+            rho_moved = rho_exp - rho_est
+            rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
+            J_div_rho = J_exp / rho_exp
+            J_div_rho_minus_grad_U = J_div_rho - gradU
 
             # determination of integration limits
-            a = brentq(rho_zero, 0, 180) # left limit
-            b = brentq(rho_zero, 180, 400) # right limit
+            roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
+            print(f"[DEBUG] Roots found for rho_est={rho_est}: {roots}")
+            a = roots[0] if len(roots) > 0 else x_min
+            b = roots[1] if len(roots) > 0 else x_max
 
-            # integrals for current
-            integral_j, err = quad(rho_j, a, b)
-            integral_rho_g, err = quad(g_x, a, b, args=gs)
+            d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
+            d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
 
-            # values of A and B
-            a0 = -(d2_rho_non_par(b) - d2_rho_non_par(a))
-            a1 = (d_rho_non_par(b) ** 2 - d_rho_non_par(a) ** 2)
-            b = -integral_j - integral_rho_g
+            check_if_at_integration_points_equal(save_dir, d_rho_exp_func, d_rho_exp, a, b)
+            check_if_at_integration_points_equal(save_dir, d2_rho_exp_func, d2_rho_exp, a, b)
 
-            a0_exp.append(a0[0] / b)
-            a1_exp.append(a1[0] / b)
-        
+            J_div_rho_minus_grad_U_func = interp1d(x_grid, J_div_rho_minus_grad_U, kind='cubic', fill_value="extrapolate")
+            integral_j, err = quad(J_div_rho_minus_grad_U_func, a, b)
+
+            a0 = -(d2_rho_exp_func(b) - d2_rho_exp_func(a))
+            a1 = (d_rho_exp_func(b) ** 2 - d_rho_exp_func(a) ** 2)
+            b_val = -integral_j
+
+            print(f"[DEBUG] a0: {a0}, a1: {a1}, b: {b_val}")
+            a0_exp.append(a0 / b_val)
+            a1_exp.append(a1 / b_val)
 
     # System of equations
 
     # Matrix build
+    unique_simulations = set(key[0] for key, _ in profiles_by_step_density.items())
+    num_simulations = len(unique_simulations)
     N = len(rho_est_arr) # number of rho evaluated
-    M = N_sims # number of simulations
+    M = num_simulations # number of simulations
 
     A = np.zeros((M*N, 2*N))
 
@@ -748,3 +717,10 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
         eta[i] = b[2 * i + 1]
 
     cov = V @ np.diag(1 / s ** 2) @ V.T
+
+    # Use the first folder name from the density profiles as the folder column
+    folder_name = str(list(profiles_by_step_density.keys())[0][0]) if profiles_by_step_density else "-"
+    for i in range(N):
+        output_file.write(f"{i}\t{folder_name}\t{gam[i]:.6f}\t{eta[i]:.6f}\n")
+    output_file.close()
+    print(f"Gamma and lambda results written to {output_filename}")

@@ -1,7 +1,22 @@
-import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
+import numpy as np
 
-# Your data snippet, 2 rows (y=0 and y=1), 200 columns each:
-row_0 = [   0.90 ,    0.90 ,    0.90 ,    0.90 ,    0.89 ,    0.89 ,    0.89 ,    0.88 ,    0.87 ,    0.87 ,    0.86 ,    0.85 ,    0.84 ,    0.83 ,    0.82 ,    0.81 ,    0.80 ,    0.78 ,    0.77 ,    0.75 ,    0.74 ,    0.72 ,    0.71 ,    0.69 ,    0.67 ,    0.66 ,    0.64 ,    0.62 ,    0.60 ,    0.58 ,    0.56 ,    0.55 ,    0.53 ,    0.51 ,    0.49 ,    0.47 ,    0.45 ,    0.43 ,    0.41 ,    0.39 ,    0.37 ,    0.36 ,    0.34 ,    0.32 ,    0.30 ,    0.29 ,    0.27 ,    0.26 ,    0.24 ,    0.23 ,    0.21 ,    0.20 ,    0.19 ,    0.18 ,    0.17 ,    0.16 ,    0.15 ,    0.14 ,    0.13 ,    0.12 ,    0.12 ,    0.11 ,    0.11 ,    0.11 ,    0.10 ,    0.10 ,    0.10 ,    0.10 ,    0.10 ,    0.10 ,    0.10 ,    0.11 ,    0.11 ,    0.12 ,    0.12 ,    0.13 ,    0.13 ,    0.14 ,    0.15 ,    0.15 ,    0.16 ,    0.17 ,    0.18 ,    0.19 ,    0.20 ,    0.21 ,    0.22 ,    0.23 ,    0.24 ,    0.25 ,    0.26 ,    0.27 ,    0.28 ,    0.29 ,    0.30 ,    0.32 ,    0.33 ,    0.34 ,    0.35 ,    0.36 ,    0.37 ,    0.38 ,    0.39 ,    0.39 ,    0.40 ,    0.41 ,    0.42 ,    0.43 ,    0.43 ,    0.44 ,    0.45 ,    0.45 ,    0.46 ,    0.46 ,    0.47 ,    0.47 ,    0.48 ,    0.48 ,    0.48 ,    0.49 ,    0.49 ,    0.49 ,    0.49 ,    0.49 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.50 ,    0.51 ,    0.51 ,    0.51 ,    0.51 ,    0.51 ,    0.52 ,    0.52 ,    0.52 ,    0.53 ,    0.53 ,    0.54 ,    0.54 ,    0.55 ,    0.56 ,    0.56 ,    0.57 ,    0.58 ,    0.58 ,    0.59 ,    0.60 ,    0.61 ,    0.62 ,    0.63 ,    0.64 ,    0.65 ,    0.66 ,    0.67 ,    0.68 ,    0.69 ,    0.70 ,    0.71 ,    0.72 ,    0.73 ,    0.74 ,    0.75 ,    0.76 ,    0.77 ,    0.78 ,    0.79 ,    0.80 ,    0.81 ,    0.82 ,    0.83 ,    0.84 ,    0.85 ,    0.86 ,    0.86 ,    0.87 ,    0.88 ,    0.88 ,    0.89 ,    0.89 ,    0.89 ,    0.90 ,    0.90 ,    0.90 ]
-plt.plot(row_0, label='y=0', marker='o', linestyle='-', color='blue')
+# Generate random discrete data (0, 1, or 2)
+np.random.seed(42)
+data = np.random.choice([0, 1, 2], size=(10, 10))
+
+# Example discrete colormap with 3 levels: 0 (white), 1 (yellow), 2 (red)
+cmap = ListedColormap(['white', 'yellow', 'red'])
+norm = plt.Normalize(vmin=0, vmax=2)
+
+im = plt.imshow(data, cmap=cmap, norm=norm)
+cbar = plt.colorbar(im, ticks=[0, 1, 2])
+cbar.ax.set_yticklabels(['0', '1', '2'])
+
+# Add a yellow dot and '1' to the legend
+legend_elements = [Patch(facecolor='yellow', edgecolor='black', label='1')]
+plt.legend(handles=legend_elements, loc='upper right', title='Value')
+
 plt.show()

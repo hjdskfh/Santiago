@@ -272,14 +272,6 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
                 #                        fontsize=10)
                 axes[row, col].set_xticks([])
                 axes[row, col].set_yticks([])
-                
-                # Add metrics as text
-                mean_occ = result['mean_occupancy']
-                std_occ = result['std_occupancy']
-                axes[row, col].text(0.02, 0.98, rf'$\mu={mean_occ:.2f}\,\ \sigma={std_occ:.2f}$', 
-                                   transform=axes[row, col].transAxes, 
-                                   verticalalignment='top', fontsize=8, 
-                                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
             else:
                 # No data for this combination
                 axes[row, col].text(0.5, 0.5, 'No Data', 
@@ -310,8 +302,8 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     density_y = (top_margin + bottom_margin) / 2  # Center vertically in plot area
     
     tumble_x = (left_margin + right_margin) / 2  # Center horizontally in plot area
-    tumble_y = top_margin + (1 - top_margin) * 0.3  # 30% into the top margin space
-    
+    tumble_y = top_margin + (1 - top_margin) * 0.1  # 10% into the top margin space
+
     # Add larger axis labels on the sides with automatic positioning
     fig.text(density_x, density_y, r'Density $\rho$', fontsize=20, fontweight='bold', 
              rotation=90, va='center', ha='center')
@@ -329,7 +321,6 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     first_result = next(iter(results), None)
     total_time = first_result['totaltime'] if first_result and first_result['totaltime'] is not None else "Unknown"
     gamma = first_result['gamma'] if first_result and first_result['gamma'] is not None else None
-    g = first_result['g'] if first_result and first_result['g'] is not None else None
     
     # Build parameter string for title
     param_str = ""
@@ -338,13 +329,13 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     potential_type = None
     
     if "director-uneven-sin" in run_date:
-        potential_type = "Director based move probability (uneven sinus)"
+        potential_type = "Director uneven sinus move prob"
     elif "director-symmetric-sin" in run_date:
-        potential_type = "Director based move probability (symmetric sinus)"
+        potential_type = "Director symmetric sinus move prob"
     elif "uneven-sin" in run_date:
-        potential_type = "Uneven sinusoidal move probability"
+        potential_type = "Uneven sinus move prob"
     elif "default" in run_date:
-        potential_type = "No potential (move probability = v0 (0.5 as default))"
+        potential_type = "No potential (move prob = v0)"
     
     # Add potential type to parameter string
     if potential_type:
@@ -352,26 +343,24 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     
     if gamma is not None:
         param_str += f", γ={gamma}"
-    if g is not None:
-        param_str += f", g={g}"
     
     # Add title as text on the figure for better control
     plt.figtext(0.5, 0.98, 'Parameter Sweep Comparison Grid', 
                 fontsize=40, fontweight='bold', ha='center')
     if run_date:
-        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Run Date: {run_date[:8]}, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
+        plt.figtext(0.5, 0.94, f'Run Time: {run_date[9:15]}, Step: {number if number is not None else "Unknown"}{param_str}', 
                 fontsize=18, ha='center')
     else:
-        plt.figtext(0.5, 0.94, f'Time: {total_time} steps, Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
+        plt.figtext(0.5, 0.94, f'Depicted Step: {number if number is not None else "Unknown"}{param_str}', 
                     fontsize=18, ha='center')
     
     folder = result['folder']
     folder_name = os.path.basename(folder)
     # Include depicted step in the filename if available
-    step_str = f"_step{number}" if number is not None else ""
+    step_str = f"step{number}" if number is not None else ""
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        output_file = f'{save_dir}/comparison_grid_acc_{folder_name}{step_str}.png'
+        output_file = f'{save_dir}/comparison_grid_acc_{step_str}.png'
     else:
         output_file = f'{folder}/comparison_grid_acc_{step_str}.png'
     
@@ -629,13 +618,6 @@ def create_density_evolution_comparison_grid(all_processed_data, save_dir=None, 
 
                 # Remove x-ticks for cleaner look
                 ax.set_xticks([])
-
-                # Add mean and std as text
-                mean_val = np.mean(density_2d)
-                std_val = np.std(density_2d)
-                ax.text(0.02, 0.98, f'μ={mean_val:.2f}\nσ={std_val:.2f}',
-                        transform=ax.transAxes, verticalalignment='top', fontsize=8,
-                        bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
             else:
                 # No data for this parameter combination
                 ax.text(0.5, 0.5, 'No Data',
@@ -884,22 +866,28 @@ def check_if_at_integration_points_equal(save_dir, func_interp, func, a, b, tol=
     # Plot the function between a and b and save to savedir
     x_plot = np.linspace(a, b, 200)
     y_plot = func_interp(x_plot)
+    # Robustly get a function name for filename
+    if hasattr(func, '__name__'):
+        func_name = func.__name__
+    elif hasattr(func, '__class__'):
+        func_name = func.__class__.__name__
+    else:
+        func_name = 'function'
+
     plt.figure()
     plt.plot(x_plot, y_plot)
     plt.scatter([a, b], [val_a, val_b], color='red', label='Integration points')
-    plt.title(f'Function between integration points a={a}, b={b}')
+    plt.title(f'{func_name} between integration points a={a:.2f}, b={b:.2f}')
     plt.xlabel('x')
     plt.ylabel('func(x)')
     plt.legend()
-    save_dir = 'analysis'  # Default save directory
+    save_dir = os.path.join(save_dir, f"drho_and_d2rho")
     if not os.path.exists(save_dir):
         os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, f'{func.__name__}_integration_points_{a:.2f}_{b:.2f}.png'))
+    plt.savefig(os.path.join(save_dir, f'{func_name}_integration_points_{a:.2f}_{b:.2f}.png'))
     plt.close()
     if abs(val_a - val_b) < tol:
         raise ValueError(f"Function values at integration points are too close: func({a})={val_a}, func({b})={val_b}")
-    else:
-        print(f"Function values at integration points are acceptable: func({a})={val_a}, func({b})={val_b}")
 
 def find_move_prob_file(runs_dir):
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
