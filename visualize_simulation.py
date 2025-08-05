@@ -185,9 +185,10 @@ if __name__ == "__main__":
         elif mode_choice == '9':
             use_defaults = True  # Change to False if you want to re-enable input
             if use_defaults:
-                step_list = list(range(1000, 50001, 7000))  # Example default steps
+                step_list = [5000]  # Example default steps
                 kind_of_derivative = 'both'
                 smooth_choice = 'y'
+                kernel_width = 2  # Default kernel width factor
             else:
                 while True:
                     try:
@@ -223,25 +224,32 @@ if __name__ == "__main__":
                 kind_of_derivative = input("Choose method for density derivative calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
                 print(f"Calculating density derivatives using method: {kind_of_derivative}")
                 smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
-            
+                while True:
+                    kernel_width = input("Enter kernel width for Gaussian smoothing in factor of mu (default is 1 -> sigma, 2: 2*sigma): ").strip()
+                    try:
+                        kernel_width = float(kernel_width)
+                        break
+                    except ValueError:
+                        print("Please enter a single numeric value (e.g., 1 or 2).")
+
             save_choice = 'y'
             save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
             smooth_density = smooth_choice == 'y'
 
             title_steps = "steps_" + "_".join(map(str, step_list))
             if save_choice == 'y' and smooth_choice == 'y':
-                save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_{kind_of_derivative}_{title_steps}_smoothing")
+                save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}_smoothing")
             if save_choice == 'y' and smooth_choice == 'n':
-                save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_{kind_of_derivative}_{title_steps}")
+                save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}")
             os.makedirs(os.path.dirname(save_dir), exist_ok=True)
             if kind_of_derivative == 'both':
                 print("Calculating both Gaussian kernel and finite difference derivatives.")
-                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method='kernel')
-                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method='diff')
+                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='kernel')
+                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='diff')
             else:
                 print(f"Calculating {kind_of_derivative} density derivatives.")
-                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
-        
+                analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
+
         elif mode_choice == '10':
             use_defaults = True  # Change to False if you want to re-enable input
             if use_defaults:
@@ -255,6 +263,8 @@ if __name__ == "__main__":
                     raise FileNotFoundError("No density files found in the specified runs directory.")
                 method_input = 'both'  # do both methods
                 lambda_choice = 'both'  # default to density dependent
+                set_rho_min = 1.2  # default min density
+                set_rho_max = 2.5  # default max density
             else:
                 while True:
                     try:
@@ -268,76 +278,69 @@ if __name__ == "__main__":
                         print("Invalid input. Please enter a valid timestep.")
                 method_input = input("Choose method for lambda and gamma calculation (Gaussian kernel (input: kernel), finite_difference (input: diff)) or both (input: both): ").strip().lower()
                 lambda_choice = input("Choose method for lambda calculation constant (input: constant), density dependent (input: densitydep), or both (input: both): ").strip().lower()
+                set_rho_min = input("Enter min density for analysis (default is 1.2): ").strip()
+                set_rho_max = input("Enter max density for analysis (default is 2.5): ").strip()      
+
             if lambda_choice not in ['constant', 'densitydep', 'both']:
                 raise ValueError(f"Invalid lambda choice: {lambda_choice}")
             if method_input not in ['kernel', 'diff', 'both']:
                 raise ValueError(f"Invalid method choice: {method_input}")
 
-            save_dir_diff_const = os.path.join(analysis_dir, f"results_gamma_lambda_diff_constant_{start_averaging_step}")
-            save_dir_diff_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_diff_densitydep_{start_averaging_step}")
-            save_dir_kernel_const = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_constant_{start_averaging_step}")
-            save_dir_kernel_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_densitydep_{start_averaging_step}")
+            # Convert set_rho_min and set_rho_max to float if needed
+            try:
+                set_rho_min = float(set_rho_min)
+            except Exception:
+                set_rho_min = 1.2
+            try:
+                set_rho_max = float(set_rho_max)
+            except Exception:
+                set_rho_max = 2.5
 
-            os.makedirs(os.path.dirname(save_dir_kernel_const), exist_ok=True)
-            os.makedirs(os.path.dirname(save_dir_diff_const), exist_ok=True)
-            os.makedirs(os.path.dirname(save_dir_kernel_densitydep), exist_ok=True)
-            os.makedirs(os.path.dirname(save_dir_diff_densitydep), exist_ok=True)
-            if method_input == 'both':
-                if lambda_choice == 'both':
-                    print("[DEBUG] Calculating both Gaussian kernel and finite difference gamma/lambda constants.")
-                    compute_gamma_lambda_constant(runs_dir, save_dir_kernel_const, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    compute_gamma_lambda_constant(runs_dir, save_dir_diff_const, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    compute_gamma_lambda_density_dep(runs_dir, save_dir_kernel_densitydep, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    compute_gamma_lambda_density_dep(runs_dir, save_dir_diff_densitydep, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_const)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_densitydep)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_const)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_densitydep)
-                elif lambda_choice == 'densitydep':
-                    print("[DEBUG] Calculating density dependent gamma/lambda constants.")
-                    compute_gamma_lambda_density_dep(runs_dir, save_dir_kernel_densitydep, start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    compute_gamma_lambda_density_dep(runs_dir, save_dir_diff_densitydep, start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_densitydep)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_densitydep)                
-                elif lambda_choice == 'constant':
-                    print("[DEBUG] Calculating constant gamma/lambda constants.")
-                    compute_gamma_lambda_constant(runs_dir, save_dir_kernel_const, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    compute_gamma_lambda_constant(runs_dir, save_dir_diff_const, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_const)
-                    plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_const)                
+            # Set mu flag (kernel width) for kernel method
+            set_mu = kernel_width if 'kernel_width' in locals() else 2
+
+            # Prepare output directories
+            save_dir_diff_const = os.path.join(analysis_dir, f"results_gamma_lambda_diff_constant_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
+            save_dir_diff_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_diff_densitydep_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
+            save_dir_kernel_const = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_constant_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
+            save_dir_kernel_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_densitydep_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
+            output_dirs = [
+                save_dir_kernel_const, save_dir_diff_const,
+                save_dir_kernel_densitydep, save_dir_diff_densitydep
+            ]
+            for d in output_dirs:
+                os.makedirs(os.path.dirname(d), exist_ok=True)
+
+            # Define compute and plot tasks
+            compute_tasks = []
+            plot_tasks = []
+
+            if method_input in ['kernel', 'both']:
+                if lambda_choice in ['constant', 'both']:
+                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_kernel_const, 'kernel', True))
+                    plot_tasks.append((plot_file, runs_dir, save_dir_kernel_const))
+                if lambda_choice in ['densitydep', 'both']:
+                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_kernel_densitydep, 'kernel', True))
+                    plot_tasks.append((plot_file, runs_dir, save_dir_kernel_densitydep))
+
+            if method_input in ['diff', 'both']:
+                if lambda_choice in ['constant', 'both']:
+                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_diff_const, 'diff', False))
+                    plot_tasks.append((plot_file, runs_dir, save_dir_diff_const))
+                if lambda_choice in ['densitydep', 'both']:
+                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_diff_densitydep, 'diff', False))
+                    plot_tasks.append((plot_file, runs_dir, save_dir_diff_densitydep))
+
+            # Run compute tasks
+            for func, rdir, sdir, method, use_mu in compute_tasks:
+                if use_mu:
+                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max, mu=set_mu)
                 else:
-                    raise ValueError(f"Invalid lambda choice: {lambda_choice}")
-            else:
-                if method_input == 'kernel':
-                    if lambda_choice == 'both':
-                        compute_gamma_lambda_constant(runs_dir, save_dir_kernel_const, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        compute_gamma_lambda_density_dep(runs_dir, save_dir_kernel_densitydep, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_const)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_densitydep)
-                    elif lambda_choice == 'densitydep':
-                        compute_gamma_lambda_density_dep(runs_dir, save_dir_kernel_densitydep, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_densitydep)
-                    elif lambda_choice == 'constant':
-                        compute_gamma_lambda_constant(runs_dir, save_dir_kernel_const, method='kernel', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_kernel_const)                       
-                    else:
-                        raise ValueError(f"Invalid lambda choice: {lambda_choice}")
-                elif method_input == 'diff':
-                    if lambda_choice == 'both':
-                        compute_gamma_lambda_constant(runs_dir, save_dir_diff_const, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        compute_gamma_lambda_density_dep(runs_dir, save_dir_diff_densitydep, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_const)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_densitydep)
-                    elif lambda_choice == 'densitydep':
-                        compute_gamma_lambda_density_dep(runs_dir, save_dir_diff_densitydep, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_densitydep)
-                    elif lambda_choice == 'constant':
-                        compute_gamma_lambda_constant(runs_dir, save_dir_diff_const, method='diff', start_averaging_step=start_averaging_step, x_min=0, x_max=200)
-                        plot_file(runs_dir, name="MoveProbgradU", save_dir=save_dir_diff_const)
-                    else:
-                        raise ValueError(f"Invalid lambda choice: {lambda_choice}")
+                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max)
 
-            # After gamma/lambda calculation, plot MoveProbgradU file
+            # Run plot tasks
+            for func, rdir, sdir in plot_tasks:
+                func(rdir, name="MoveProbgradU", save_dir=sdir)
 
     # End to measure execution time
     end_time = time.time()

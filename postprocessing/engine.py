@@ -687,6 +687,8 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
     x = np.arange(len(profile))
     if mu is None:
         mu = np.std(profile)
+    else:
+        mu = mu * np.std(profile)
     if smooth:
         smoothed = nw_kernel_regression(profile, x, x, mu)
     else:

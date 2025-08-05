@@ -484,15 +484,15 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
         create_density_evolution_comparison_grid(all_processed_data, save_dir, run_date)
     print("Density evolution stacked visualization complete!")
 
-def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, save_choice=False, save_dir=None, method=None):
-    profiles_by_step = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=smooth, method=method)
+def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, mu=None, save_choice=False, save_dir=None, method=None):
+    profiles_by_step = compute_density_profiles_by_step(runs_dir, steps_to_include, mu=None, smooth=smooth, method=method)
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200):
+def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200, rho_min=1.0, rho_max=1.75, mu=None):
     """ Compute gamma and lambda constants for given experimental data."""
    
     gam_exp = []
@@ -500,8 +500,10 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
     erf_exp = []
     cov_exp = []
 
-    rho_min = 1
-    rho_max = 1.75
+    if rho_min >= rho_max:
+        raise ValueError("Error: rho_min should be less than rho_max.")
+    if rho_min < 0 or rho_max < 0:
+        raise ValueError("Error: rho_min and rho_max should be non-negative.")
     rho_est_arr = np.linspace(rho_min, rho_max, 10)
 
     print("sim", "|" , "gamma", "|" , "lambda")
@@ -513,8 +515,8 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
 
     # Use both start and end step for averaging
     steps_to_include = start_averaging_step
-    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
-    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
+    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
         # load data for this simulation run
@@ -602,29 +604,31 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
     print(f"Gamma and lambda results written to {output_filename}")
 
 
-def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200):
+def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200, rho_min=1, rho_max=1.75, mu=None):
     """ Compute gamma and lambda constants for given experimental data, allowing user to choose end averaging step."""
     
     a0_exp = []
     a1_exp = []
 
     # I added that
-    rho_min = 1
-    rho_max = 1.75
+    if rho_min >= rho_max:
+        raise ValueError("Error: rho_min should be less than rho_max.")
+    if rho_min < 0 or rho_max < 0:
+        raise ValueError("Error: rho_min and rho_max should be non-negative.")
     rho_est_arr = np.linspace(rho_min, rho_max, 10)
 
-    print("sim", "|" , "gamma", "|" , "lambda")
+    print("slice", "|" , "gamma", "|" , "lambda")
     # Prepare to write gamma and lambda to a file
     output_filename = os.path.join(save_dir, f'gamma_lambda_results_{method}_densitydep.txt')
     os.makedirs(os.path.dirname(output_filename), exist_ok=True)
     output_file = open(output_filename, 'w')
-    output_file.write("sim\tfolder\tgamma\tlambda\n")
+    output_file.write("slice\trho_of_slice\tgamma\tlambda\n")
 
     # Use both start and end step for averaging
     steps_to_include = start_averaging_step
-    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
     print(f"[DEBUG] profiles_by_step_density has {len(profiles_by_step_density)} entries.")
-    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method)
+    profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
     print(f"[DEBUG] profiles_by_step_flux has {len(profiles_by_step_flux)} entries.")
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
@@ -721,6 +725,6 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
     # Use the first folder name from the density profiles as the folder column
     folder_name = str(list(profiles_by_step_density.keys())[0][0]) if profiles_by_step_density else "-"
     for i in range(N):
-        output_file.write(f"{i}\t{folder_name}\t{gam[i]:.6f}\t{eta[i]:.6f}\n")
+        output_file.write(f"{i}\t{rho_est_arr[i]}\t{gam[i]:.6f}\t{eta[i]:.6f}\n")
     output_file.close()
     print(f"Gamma and lambda results written to {output_filename}")
