@@ -1,10 +1,14 @@
-import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
-data = np.loadtxt("/Users/leabauer/Documents/code/runs/run_20250723_164719_uneven-sin_track_flux_density/d0.00125_t0.2_time100000_gamma-0.5_g1/XAccumulatedFlux_100000.dat")
-plt.plot(data, marker='o', linestyle='-')
-plt.xlabel("X Position")
-plt.ylabel("Accumulated Flux")
-plt.title("XAccumulatedFlux at Final Step")
-plt.grid(True, alpha=0.3)
+df = pd.read_csv('output.tsv', sep='\t')
+
+plt.plot(df['index'], df['gamma'], label='Gamma')
+plt.plot(df['index'], df['eta'], label='Eta')
+plt.xlabel('Index')
+plt.ylabel('Value')
+plt.title('Gamma and Eta vs Index')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
 plt.show()

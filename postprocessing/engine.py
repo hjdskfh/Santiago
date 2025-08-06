@@ -707,7 +707,14 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
         raise ValueError(f"Unknown method '{method}' for derivative computation, try diff or kernel")
     return smoothed, first_deriv, second_deriv
 
-def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
+def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None, density_avg_exists=False):
+    #densavg_path = os.path.join(runs_dir, "Density_avg.dat")
+    #if os.path.exists(densavg_path):
+    #    density_avg_exists = True
+    #    print("Density_avg.dat found!")
+    #else:
+     #   density_avg_exists = False
+    #    print("No Density_avg.dat found.")
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
     print(f"folders found: {folders}")
@@ -715,44 +722,59 @@ def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu
     # Ensure steps_to_include is iterable
     if isinstance(steps_to_include, int):
         steps_to_include = [steps_to_include]
-    # Allow steps_to_include to be a single int or an iterable
     if isinstance(steps_to_include, int):
         steps_iter = [steps_to_include]
     else:
         steps_iter = steps_to_include
 
     for folder in folders:
-        folder_name = os.path.basename(folder)
-        # Find all density files and extract their steps
-        density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
-        steps = sorted([
-            int(os.path.basename(f).split("_")[1].split(".")[0])
-            for f in density_files
-        ])
-        file_map = {
-            int(os.path.basename(f).split("_")[1].split(".")[0]): f
-            for f in density_files
-        }
-        for step in steps_iter:
-            idx = bisect.bisect_left(steps, step)
-            profiles = []
-            for s in steps[idx:]:
-                path = file_map[s]
-                try:
-                    data = np.loadtxt(path)
-                    if data.ndim == 1:
-                        profiles.append(data)
-                    elif data.ndim == 2:
-                        profiles.append(np.mean(data, axis=0))
-                except Exception:
+        if density_avg_exists:
+            try:
+                data = np.loadtxt(density_avg_path)
+                if data.ndim == 2:
+                    avg_profile = np.mean(data, axis=0)
+                else:
+                    avg_profile = data
+                print(f"[Info] Using Density_avg.dat for folder {folder_name}")
+                smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
+                # Fill profiles_by_step for every requested step with the same average profile
+                for step in steps_iter:
+                    profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
+                continue  # Skip per-step files if avg exists
+            except Exception as e:
+                print(f"[Warning] Failed to load Density_avg.dat in {folder_name}: {e}")
+                # Fallback to per-step logic
+        else:
+            # Fallback: use per-step density files
+            density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
+            steps = sorted([
+                int(os.path.basename(f).split("_")[1].split(".")[0])
+                for f in density_files
+            ])
+            file_map = {
+                int(os.path.basename(f).split("_")[1].split(".")[0]): f
+                for f in density_files
+            }
+            for step in steps_iter:
+                idx = bisect.bisect_left(steps, step)
+                profiles = []
+                for s in steps[idx:]:
+                    path = file_map[s]
+                    try:
+                        data = np.loadtxt(path)
+                        if data.ndim == 1:
+                            profiles.append(data)
+                        elif data.ndim == 2:
+                            profiles.append(np.mean(data, axis=0))
+                    except Exception:
+                        continue
+                if not profiles:
+                    print(f"[Warning] No profiles found for folder {folder_name} step {step}")
                     continue
-            if not profiles:
-                print(f"[Warning] No profiles found for folder {folder_name} step {step}")
-                continue
-            avg_profile = np.mean(profiles, axis=0)
-            print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
-            smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
-            profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
+                avg_profile = np.mean(profiles, axis=0)
+                print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
+                smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
+                profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
     return profiles_by_step
 
 def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method=None):
@@ -905,3 +927,23 @@ def find_move_prob_file(runs_dir):
                 return None
     print("No MoveProbgradU_*.dat file found in any folder.")
     return None
+
+
+# --- Amplitude extraction utility for external use ---
+def extract_amplitude_from_log(log_path):
+    """
+    Extracts the amplitude value from a run_summary.log file.
+    Returns the amplitude as float if found, else None.
+    """
+    import re
+    amplitude = None
+    try:
+        with open(log_path, 'r') as f:
+            for line in f:
+                match = re.search(r'--amplitude\s+([0-9.eE+-]+)', line)
+                if match:
+                    amplitude = float(match.group(1))
+                    break
+    except Exception as e:
+        print(f"[extract_amplitude_from_log] Error reading {log_path}: {e}")
+    return amplitude

@@ -152,7 +152,7 @@ if __name__ == "__main__":
 
             save_dir = os.path.join(analysis_dir, "time_evolution") if save_choice == 'y' else None
             show_individual = show_choice == 'y'
-            visualize_time_evolution(runs_path, save_dir=save_dir, show_individual=show_individual)
+            visualize_time_evolution(runs_dir, save_dir=save_dir, show_individual=show_individual)
             print("Time evolution visualization complete!")
 
         elif mode_choice == '7':
@@ -251,20 +251,23 @@ if __name__ == "__main__":
                 analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
 
         elif mode_choice == '10':
+        
             use_defaults = True  # Change to False if you want to re-enable input
             if use_defaults:
                 start_averaging_step = 5000  # Example default steps
                 density_files = glob.glob(os.path.join(runs_dir, '**', 'Density_*.dat'), recursive=True)
                 if density_files:
-                    # Limit to first 1000 files for debug/performance
-                    limited_density_files = density_files[:1000]
+                    # Limit to first 10 files for debug/performance
+                    limited_density_files = density_files[:10]
                     steps_found = [int(re.search(r'Density_(\d+)\.dat', os.path.basename(f)).group(1)) for f in limited_density_files if re.search(r'Density_(\d+)\.dat', os.path.basename(f))]
                 else:
                     raise FileNotFoundError("No density files found in the specified runs directory.")
-                method_input = 'both'  # do both methods
-                lambda_choice = 'both'  # default to density dependent
-                set_rho_min = 1.2  # default min density
-                set_rho_max = 2.5  # default max density
+                method_input = 'diff'  # do both methods
+                lambda_choice = 'densitydep'  # default to density dependent
+                set_rho_min = 1.4  # default min density
+                set_rho_max = 2.7  # default max density
+                set_mu = 1  # default kernel width factor
+                nr_of_slices = 20  # default number of slices
             else:
                 while True:
                     try:
@@ -280,6 +283,23 @@ if __name__ == "__main__":
                 lambda_choice = input("Choose method for lambda calculation constant (input: constant), density dependent (input: densitydep), or both (input: both): ").strip().lower()
                 set_rho_min = input("Enter min density for analysis (default is 1.2): ").strip()
                 set_rho_max = input("Enter max density for analysis (default is 2.5): ").strip()      
+                set_mu = input("Enter kernel width for Gaussian smoothing in factor of mu (default is 1 -> sigma, 2: 2*sigma): ").strip()
+                nr_of_slices = input("Enter number of slices for rho estimation (default is 20): ").strip()
+
+            # Check if Density_avg file in first folder of runs_dir and override start_averaging_step if it exists
+            folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+            densavg_path = os.path.join(folders[0], "Density_avg_start.dat")
+            if os.path.exists(densavg_path):
+                steps = sorted([
+                    int(os.path.basename(f).split("_")[1].split(".")[0])
+                    for f in density_files
+                ])
+                start_averaging_step = steps[0]  # Override to start from the beginning if Density_avg exists
+                density_avg_exists = True
+                print("Density_avg_start.dat found!")
+            else:
+                density_avg_exists = False
+                print("No Density_avg_start.dat found.")
 
             if lambda_choice not in ['constant', 'densitydep', 'both']:
                 raise ValueError(f"Invalid lambda choice: {lambda_choice}")
@@ -296,14 +316,12 @@ if __name__ == "__main__":
             except Exception:
                 set_rho_max = 2.5
 
-            # Set mu flag (kernel width) for kernel method
-            set_mu = kernel_width if 'kernel_width' in locals() else 2
 
-            # Prepare output directories
-            save_dir_diff_const = os.path.join(analysis_dir, f"results_gamma_lambda_diff_constant_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
-            save_dir_diff_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_diff_densitydep_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
-            save_dir_kernel_const = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_constant_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
-            save_dir_kernel_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_densitydep_rho{set_rho_min}_{set_rho_max}_{start_averaging_step}")
+            # Prepare output directories (add nr_of_slices to output and function calls)
+            save_dir_diff_const = os.path.join(analysis_dir, f"results_gamma_lambda_diff_constant_rho{set_rho_min}_{set_rho_max}_start{start_averaging_step}_mu{set_mu}sigma_slices{nr_of_slices}")
+            save_dir_diff_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_diff_densitydep_rho{set_rho_min}_{set_rho_max}_start{start_averaging_step}_mu{set_mu}sigma_slices{nr_of_slices}")
+            save_dir_kernel_const = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_constant_rho{set_rho_min}_{set_rho_max}_start{start_averaging_step}_mu{set_mu}sigma_slices{nr_of_slices}")
+            save_dir_kernel_densitydep = os.path.join(analysis_dir, f"results_gamma_lambda_kernel_densitydep_rho{set_rho_min}_{set_rho_max}_start{start_averaging_step}_mu{set_mu}sigma_slices{nr_of_slices}")
             output_dirs = [
                 save_dir_kernel_const, save_dir_diff_const,
                 save_dir_kernel_densitydep, save_dir_diff_densitydep
@@ -317,30 +335,40 @@ if __name__ == "__main__":
 
             if method_input in ['kernel', 'both']:
                 if lambda_choice in ['constant', 'both']:
-                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_kernel_const, 'kernel', True))
+                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_kernel_const, 'kernel', True, nr_of_slices))
                     plot_tasks.append((plot_file, runs_dir, save_dir_kernel_const))
                 if lambda_choice in ['densitydep', 'both']:
-                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_kernel_densitydep, 'kernel', True))
+                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_kernel_densitydep, 'kernel', True, nr_of_slices))
                     plot_tasks.append((plot_file, runs_dir, save_dir_kernel_densitydep))
 
             if method_input in ['diff', 'both']:
                 if lambda_choice in ['constant', 'both']:
-                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_diff_const, 'diff', False))
+                    compute_tasks.append((compute_gamma_lambda_constant, runs_dir, save_dir_diff_const, 'diff', False, nr_of_slices))
                     plot_tasks.append((plot_file, runs_dir, save_dir_diff_const))
                 if lambda_choice in ['densitydep', 'both']:
-                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_diff_densitydep, 'diff', False))
+                    compute_tasks.append((compute_gamma_lambda_density_dep, runs_dir, save_dir_diff_densitydep, 'diff', False, nr_of_slices))
                     plot_tasks.append((plot_file, runs_dir, save_dir_diff_densitydep))
 
             # Run compute tasks
-            for func, rdir, sdir, method, use_mu in compute_tasks:
+            for func, rdir, sdir, method, use_mu, slices in compute_tasks:
                 if use_mu:
-                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max, mu=set_mu)
+                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max, mu=set_mu, nr_of_slices=slices, density_avg_exists=density_avg_exists)
                 else:
-                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max)
+                    func(rdir, sdir, method=method, start_averaging_step=start_averaging_step, x_min=0, x_max=200, rho_min=set_rho_min, rho_max=set_rho_max, nr_of_slices=slices, density_avg_exists=density_avg_exists)
 
             # Run plot tasks
             for func, rdir, sdir in plot_tasks:
                 func(rdir, name="MoveProbgradU", save_dir=sdir)
+            
+            # Copy run_summary.log from runs_dir to analysis_dir
+            run_summary_src = os.path.join(runs_dir, 'run_summary.log')
+            run_summary_dst = os.path.join(analysis_dir, 'run_summary.log')
+            if os.path.exists(run_summary_src):
+                import shutil
+                shutil.copy(run_summary_src, run_summary_dst)
+                print(f"Copied run_summary.log to {run_summary_dst}")
+            else:
+                print(f"run_summary.log not found in {runs_dir}")
 
     # End to measure execution time
     end_time = time.time()

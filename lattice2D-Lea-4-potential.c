@@ -735,7 +735,7 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     }
 
     // Write the occupancy matrix
-    filter_occupancy = (index == TotalTime || index == -1 || index == 0 || (index % 10) == 0);
+    filter_occupancy = (index == TotalTime || index == -1 || index == 0 || index == TotalTime || (index % 1000) == 0);
     if (track_occupancy && filter_occupancy) {
         sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
         f=fopen(filename,"w");

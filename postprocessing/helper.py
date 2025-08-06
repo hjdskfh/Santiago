@@ -7,6 +7,7 @@ import re
 from datetime import datetime
 import shlex
 from scipy.optimize import brentq
+import pandas as pd
 
 # Gaussian kernel and its derivatives
 def kernel_function(x, mu):
@@ -99,3 +100,51 @@ def plot_file(runs_dir, name="MoveProbgradU", save_dir="analysis"):
         print(f"MoveProb map plot saved to {os.path.join(save_dir, f'{name}_plot.png')}")
     else:
         print(f"No {name}_*.dat file found for plotting.")
+
+def plot_csv(file_path, save_dir="analysis"):
+    # Load the data from CSV
+    df = pd.read_csv(file_path, sep='\t')
+
+    # Create output directory if it doesn't exist
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Extract filename without extension for plot naming
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+
+    # Determine plot type by columns available
+    if {'nr_simulation', 'gamma', 'lambda'}.issubset(df.columns):
+        # Plot for the gamma_lambda_results_constant.csv type
+        plt.figure(figsize=(8,5))
+        plt.plot(df['nr_simulation'], df['gamma'].astype(float), label='Gamma')
+        plt.plot(df['nr_simulation'], df['lambda'].astype(float), label='Lambda')
+        plt.xlabel('Simulation Number')
+        plt.ylabel('Value')
+        plt.title('Gamma and Lambda over Simulations')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        output_plot = os.path.join(save_dir, f"{base_name}_plot.png")
+        plt.savefig(output_plot)
+        plt.close()
+        print(f"Plot saved to {output_plot}")
+
+    elif {'nr_slice', 'gamma', 'lambda'}.issubset(df.columns):
+        # Plot for the gamma_lambda_results_densitydep.csv type
+        plt.figure(figsize=(10,6))
+        plt.plot(df['nr_slice'], df['gamma'].astype(float), label='Gamma')
+        plt.plot(df['nr_slice'], df['lambda'].astype(float), label='Lambda')
+        plt.xlabel('Slice Number')
+        plt.ylabel('Values')
+        plt.title('Density-dependent Gamma and Lambda')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        output_plot = os.path.join(save_dir, f"{base_name}_plot.png")
+        plt.savefig(output_plot)
+        plt.close()
+        print(f"Plot saved to {output_plot}")
+
+    else:
+        print("CSV format not recognized for plotting.")
+
+
