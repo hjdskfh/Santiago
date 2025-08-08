@@ -38,8 +38,8 @@ double AccumDensity[Lx] = {0};
 long int AccumDensitySteps = 0;
 
 // Global parameters
-char RunName[100]; // Name of the run for output directory
-char InitialFile[200]; // Path to initial occupancy file (optional)
+char RunName[150]; // Name of the run for output directory
+char InitialFile[250]; // Path to initial occupancy file (optional)
 char PotentialType[50]; // Type of potential to use
 int PotentialTypeCode = -1; // Cached potential type: 0=default, 1=uneven-sin, 2=director-uneven-sin, 3=director-symmetric-sin
 double Density; // Particle density, as N/(Lx*Ly). Its max value is nmax
@@ -51,8 +51,8 @@ double Gamma; // Gamma parameter for uneven sin function (strength of the second
 double V0; 
 
 // Density averaging globals
-bool DensityAveraging = false;
-long int DensityAveragingStart = 10000;
+bool DensityAveraging;
+long int DensityAveragingStart;
 
 long int TotalTime; // Total simulation time (needed for array sizing)
 long int *MovingParticlesCount; // Array to track moving particles per timestep
@@ -708,10 +708,6 @@ void Iterate(long int step){
             }
         }
     }
-
-    if (step % 3000 == 0) {
-        fprintf(stderr, "Step %ld\n", step);
-    }
     if (step == TotalTime && rand_buffer) {
         free(rand_buffer);
         rand_buffer = NULL;
@@ -744,7 +740,14 @@ void WriteConfig(long int index, bool track_occupancy, bool track_density, bool 
     }
 
     // Write the occupancy matrix
-    filter_occupancy = (index == TotalTime || index == -1 || index == 0);
+    if (!DensityAveraging) {
+        // If density averaging is OFF, always write at every 1000 steps or every SaveInterval
+        filter_occupancy = (index == TotalTime || index == -1 || index == 1);
+    } else {
+        // If density averaging is ON, only write up to and including DensityAveragingStart
+        filter_occupancy = (index == TotalTime || index == -1 || index == 1 || (index == DensityAveragingStart));
+    }
+    
     if (track_occupancy && filter_occupancy) {
         sprintf(filename,"%s/Occupancy_%ld.dat",RunName,index);
         f=fopen(filename,"w");
@@ -841,8 +844,8 @@ typedef struct {
     double density;
     double tumb_rate;
     long int total_time;
-    char run_name[100];
-    char initial_file[200];
+    char run_name[150];
+    char initial_file[250];
     char potential_type[50];
     long int save_interval;
     int track_movement;
@@ -902,7 +905,7 @@ void ShowUsage(const char* program_name) {
     fprintf(stderr, "  --track-density             Track density calculations\n");
     fprintf(stderr, "  --track-flux                Track movement flux matrices\n");
     fprintf(stderr, "  --seed VALUE                Random seed (default: 837437)\n");
-    fprintf(stderr, "  --density-averaging [STEP]  Enable density averaging after given step (default: 10000 if not specified)\n");
+    fprintf(stderr, "  --density-averaging [STEP]  Enable density averaging after given step (default: 5000 if not specified)\n");
     fprintf(stderr, "  --help                      Show this help message\n\n");
     
     fprintf(stderr, "Examples:\n");
@@ -1023,7 +1026,7 @@ int ParseArguments(int argc, char **argv, SimulationParams *params) {
             if (i + 1 < argc && argv[i+1][0] != '-' && (strspn(argv[i+1], "0123456789") == strlen(argv[i+1]))) {
                 params->density_averaging_start = atol(argv[++i]);
             } else {
-                params->density_averaging_start = 10000; // Default
+                params->density_averaging_start = 5000; // Default
             }
         }
         // ============ ADD NEW PARAMETERS HERE ============
@@ -1146,22 +1149,30 @@ int main(int argc, char **argv)
 
     WriteConfig(-1, params.track_occupancy, params.track_density, params.track_flux);
 
+    fprintf(stderr, "DensityAveragingStart before steps: %ld\n", DensityAveragingStart);
+    fprintf(stderr, "DensityAveraging before steps: %s\n", DensityAveraging ? "enabled" : "disabled");
+    fprintf(stderr, "AccumDensitySteps before steps: %ld\n", AccumDensitySteps);
+    fprintf(stderr, "SaveInterval before steps was set to %ld, so averaged density will be written every %ld steps\n",SaveInterval, SaveInterval);
     //Loop
     for(step=1;step<=TotalTime;step++)
     {
-        if(step%3000==0)
+        if(step%100000==0)
             fprintf(stderr,"Progress %ld of %ld steps (%0.2lf %%)\n",step,TotalTime,(100.*step)/TotalTime);
         Iterate(step);
 
         // Up to DensityAveragingStart: write as before
         // After DensityAveragingStart: accumulate density, write average at output steps (if enabled)
-        if (DensityAveraging && step >= DensityAveragingStart) {
+        if (DensityAveraging && step >= DensityAveragingStart && SaveInterval > 0 && (step + DensityAveragingStart) % SaveInterval == 0) {
             for (int i = 0; i < Lx; i++) AccumDensity[i] += (double)CalculatedDensity[i];
             AccumDensitySteps++;
         }
 
         WriteConfig(step, params.track_occupancy, params.track_density, params.track_flux);
     }
+    fprintf(stderr, "DensityAveragingStart after steps: %ld\n", DensityAveragingStart);
+    fprintf(stderr, "DensityAveraging after steps: %s\n", DensityAveraging ? "enabled" : "disabled");
+    fprintf(stderr, "AccumDensitySteps after steps: %ld\n", AccumDensitySteps);
+    fprintf(stderr, "SaveInterval before steps was set to %ld, so averaged density will be written every %ld steps\n", SaveInterval, SaveInterval);
     WriteConfig(TotalTime, params.track_occupancy, params.track_density, params.track_flux);
 
     // Write movement statistics before cleanup

@@ -67,15 +67,24 @@ def create_parameter_sweep_visualization(runs_dir='runs', number=1, process_all_
     
     # Process single time step
     results = []
+    skipped_folders = []
     for folder in folders:
+        density_file = os.path.join(folder, f"Occupancy_{number}.dat")
+        if not os.path.exists(density_file):
+            print(f"[SKIP] Missing occupancy file: {density_file} (skipping this folder)")
+            skipped_folders.append(folder)
+            continue
         result = process_folder_for_sweep(folder, number)
         if result:
             results.append(result)
-    
+
     if not results:
         print("No valid results found!")
         return
-    
+
+    if skipped_folders:
+        print(f"Skipped {len(skipped_folders)} folder(s) due to missing occupancy files for step {number}.")
+
     print(f"Processing {len(results)} results for time step {number}")
     create_comparison_grid(results, save_dir=save_dir, run_date=run_date, number=number)
 
@@ -493,7 +502,7 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
     plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
-def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200, rho_min=1.0, rho_max=1.75, mu=None, nr_of_slices=10, density_avg_exists=False):
+def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200, rho_min=1.0, rho_max=1.75, mu=None, nr_of_slices=10):
     """ Compute gamma and lambda constants for given experimental data."""
    
     gam_exp = []
@@ -516,7 +525,7 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
 
     # Use both start and end step for averaging
     steps_to_include = start_averaging_step
-    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu, density_avg_exists=density_avg_exists)
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
 
     unique_simulations = set(key[0] for key, _ in profiles_by_step_density.items())
@@ -625,7 +634,7 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
     plot_csv(output_filename, save_dir=save_dir)
 
 
-def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200, rho_min=1, rho_max=1.75, mu=None, nr_of_slices=10, density_avg_exists=False):
+def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_averaging_step=0, end_averaging_step=None, x_min=0, x_max=200, rho_min=1, rho_max=1.75, mu=None, nr_of_slices=10):
     """ Compute gamma and lambda constants for given experimental data, allowing user to choose end averaging step."""
     
     a0_exp = []
@@ -647,7 +656,7 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
 
     # Use both start and end step for averaging
     steps_to_include = start_averaging_step
-    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu, density_avg_exists=density_avg_exists)
+    profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
 
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):

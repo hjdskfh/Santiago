@@ -9,6 +9,9 @@ import shlex
 from scipy.integrate import quad
 from scipy.optimize import brentq
 import bisect
+from matplotlib.colors import BoundaryNorm
+import matplotlib.patches as mpatches   
+
 
 from postprocessing.helper import nw_kernel_regression, nw_first_derivative, nw_second_derivative, \
     quotient_rule, find_all_roots
@@ -226,16 +229,16 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     # Get unique densities and tumble rates
     densities = sorted(list(set(r['density'] for r in results)))
     tumble_rates = sorted(list(set(r['tumble_rate'] for r in results)))
-    
+
     n_rows = len(densities)  # Each row = one density
     n_cols = len(tumble_rates)  # Each column = one tumble rate
-    
+
     print(f"Grid layout: {n_rows} densities × {n_cols} tumble rates")
     print(f"Densities: {densities}")
     print(f"Tumble rates: {tumble_rates}")
-    
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(4*n_cols, 3*n_rows))
-    
+
     # Handle different return types from plt.subplots
     if n_rows == 1 and n_cols == 1:
         # Single subplot: axes is a single Axes object
@@ -247,29 +250,38 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
         # Single column: axes is a 1D array
         axes = np.array([[ax] for ax in axes])
     # else: axes is already a 2D array
-    
+
     # Find global min/max for consistent color scaling - discrete integer occupancy values
     all_data = [r['occupancy_data'] for r in results]
     global_min = 0  # Occupancy starts at 0
     global_max = int(np.max([np.max(data) for data in all_data]))  # Find actual maximum
-    
+
     # Create discrete colormap
-    discrete_cmap = create_discrete_colormap(global_max)
-    
+    # Number of discrete occupancy levels
+    n_levels = global_max + 1  # If levels are 0, 1, 2, ... global_max
+
+    # Use viridis and sample n_levels colors
+    base_cmap = plt.get_cmap('viridis')
+    colors = base_cmap(np.linspace(0, 1, n_levels))
+    discrete_cmap = ListedColormap(colors)
+
+    # Create norm for mapping discrete values to colors
+    boundaries = np.arange(global_min, global_max + 2)  # e.g., [0, 1, 2, 3, 4]
+    norm = BoundaryNorm(boundaries, ncolors=discrete_cmap.N)
+
     # Create a dictionary for quick lookup of results by (density, tumble_rate)
     result_dict = {(r['density'], r['tumble_rate']): r for r in results}
-    
+
     # Fill the grid organized by density (rows) and tumble rate (columns)
     for row, density in enumerate(densities):
         for col, tumble_rate in enumerate(tumble_rates):
             if (density, tumble_rate) in result_dict:
                 result = result_dict[(density, tumble_rate)]
                 data = result['occupancy_data']
-                
-                im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
-                                          aspect='equal', vmin=global_min, vmax=global_max)
-                #axes[row, col].set_title(rf"$\rho$={density:.2f}, $\alpha$={tumble_rate:.2f}", 
-                #                        fontsize=10)
+                #im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
+                #                          aspect='equal', vmin=global_min, vmax=global_max)
+                im = axes[row, col].imshow(data, cmap=discrete_cmap, norm=norm,
+                           origin='lower', aspect='equal')
                 axes[row, col].set_xticks([])
                 axes[row, col].set_yticks([])
             else:
@@ -278,8 +290,6 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
                                    transform=axes[row, col].transAxes, 
                                    horizontalalignment='center', verticalalignment='center',
                                    fontsize=12)
-                #axes[row, col].set_xticks([])
-                #axes[row, col].set_yticks([])
 
     
     # Add row and column labels
@@ -298,7 +308,7 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
     fig.subplots_adjust(left=left_margin, right=right_margin, top=top_margin, bottom=bottom_margin)
     
     # Calculate automatic positioning for labels based on margins
-    density_x = left_margin * 0.2  # 20% into the left margin
+    density_x = left_margin * 0.1  # 20% into the left margin
     density_y = (top_margin + bottom_margin) / 2  # Center vertically in plot area
     
     tumble_x = (left_margin + right_margin) / 2  # Center horizontally in plot area
@@ -309,12 +319,18 @@ def create_comparison_grid(results, save_dir=None, run_date="", number=None):
              rotation=90, va='center', ha='center')
     fig.text(tumble_x, tumble_y, r'Tumble Rate $\alpha$', fontsize=20, fontweight='bold', 
              ha='center', va='center')
-    cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
+    # cbar_ax = fig.add_axes([0.90, 0.15, 0.02, 0.7])
     ticks = list(range(global_min, global_max + 1))  # Integer ticks from min to max
-    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
-    cbar.set_label('Occupancy Level', fontsize=16, fontweight='bold')
-    cbar.set_ticklabels([str(i) for i in ticks])
-    cbar.ax.tick_params(labelsize=14)
+    # cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
+    # cbar.set_label('Occupancy Level', fontsize=16, fontweight='bold')
+    # cbar.set_ticklabels([str(i) for i in ticks])
+    # cbar.ax.tick_params(labelsize=14)
+    # Create legend handles
+    legend_handles = [mpatches.Patch(color=colors[i], label=f'{i}')
+                    for i in range(len(colors))]
+
+    # Position the legend on the figure
+    fig.legend(handles=legend_handles, loc='center right', fontsize=14, title='Occupancy Level')
 
     # Create title with date information
     # Get the total time from the first result (assuming all have the same total time)
@@ -394,7 +410,17 @@ def create_time_evolution_grid(all_data, time_files, dir_name, density, tumble_r
     global_max = int(np.max([np.max(data) for data in all_data]))  # Find actual maximum
     
     # Create discrete colormap
-    discrete_cmap = create_discrete_colormap(global_max)
+    # Number of discrete occupancy levels
+    n_levels = global_max + 1  # If levels are 0, 1, 2, ... global_max
+
+    # Use viridis and sample n_levels colors
+    base_cmap = plt.get_cmap('viridis')
+    colors = base_cmap(np.linspace(0, 1, n_levels))
+    discrete_cmap = ListedColormap(colors)
+
+    # Create norm for mapping discrete values to colors
+    boundaries = np.arange(global_min, global_max + 2)  # e.g., [0, 1, 2, 3, 4]
+    norm = BoundaryNorm(boundaries, ncolors=discrete_cmap.N)
     
     # Plot each selected time point
     for i, idx in enumerate(indices):
@@ -404,8 +430,10 @@ def create_time_evolution_grid(all_data, time_files, dir_name, density, tumble_r
         time_step, _ = time_files[idx]
         data = all_data[idx]
         
-        im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
-                                  aspect='equal', vmin=global_min, vmax=global_max)
+        # im = axes[row, col].imshow(data, cmap=discrete_cmap, origin='lower', 
+        #                           aspect='equal', vmin=global_min, vmax=global_max)
+        im = axes[row, col].imshow(data, cmap=discrete_cmap, norm=norm,
+                           origin='lower', aspect='equal')
         axes[row, col].set_title(f"Step {time_step}", fontsize=12)
         axes[row, col].set_xticks([])
         axes[row, col].set_yticks([])
@@ -418,10 +446,13 @@ def create_time_evolution_grid(all_data, time_files, dir_name, density, tumble_r
     
     # Add colorbar
     fig.subplots_adjust(right=0.9)
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-    ticks = list(range(global_min, global_max + 1))  # Integer ticks from min to max
-    cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
-    cbar.set_ticklabels([str(i) for i in ticks])
+    # cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+    # ticks = list(range(global_min, global_max + 1))  # Integer ticks from min to max
+    # cbar = fig.colorbar(im, cax=cbar_ax, label='Occupancy Level', ticks=ticks)
+    # cbar.set_ticklabels([str(i) for i in ticks])
+    legend_handles = [mpatches.Patch(color=colors[i], label=f'Occupancy {i}')
+                    for i in range(len(colors))]
+    fig.legend(handles=legend_handles, loc='center right', fontsize=14, title='Occupancy Level')
     
     # Add title
     if density is not None and tumble_rate is not None:
@@ -707,75 +738,163 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
         raise ValueError(f"Unknown method '{method}' for derivative computation, try diff or kernel")
     return smoothed, first_deriv, second_deriv
 
-def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None, density_avg_exists=False):
-    #densavg_path = os.path.join(runs_dir, "Density_avg.dat")
-    #if os.path.exists(densavg_path):
-    #    density_avg_exists = True
-    #    print("Density_avg.dat found!")
-    #else:
-     #   density_avg_exists = False
-    #    print("No Density_avg.dat found.")
+# def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
+#     #densavg_path = os.path.join(runs_dir, "Density_avg.dat")
+#     #if os.path.exists(densavg_path):
+#     #    density_avg_exists = True
+#     #    print("Density_avg.dat found!")
+#     #else:
+#      #   density_avg_exists = False
+#     #    print("No Density_avg.dat found.")
+#     profiles_by_step = {}
+#     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+#     print(f"folders found: {folders}")
+
+#     # Ensure steps_to_include is iterable
+#     if isinstance(steps_to_include, int):
+#         steps_to_include = [steps_to_include]
+#     if isinstance(steps_to_include, int):
+#         steps_iter = [steps_to_include]
+#     else:
+#         steps_iter = steps_to_include
+
+#     for folder in folders:
+#         folder_name = os.path.basename(folder)
+#         density_avg_path = os.path.join(folder, "Density_avg_*.dat")
+#         if os.path.exists(density_avg_path):
+#             print(f"[Info] Density_avg_*.dat found in {folder_name}, using it for profiles")
+#             try:
+#                 data = np.loadtxt(density_avg_path)
+#                 if data.ndim == 2:
+#                     avg_profile = np.mean(data, axis=0)
+#                 else:
+#                     avg_profile = data
+#                 print(f"[Info] Using Density_avg.dat for folder {folder_name}")
+#                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
+#                 # Fill profiles_by_step for every requested step with the same average profile
+#                 for step in steps_iter:
+#                     profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
+#                 continue  # Skip per-step files if avg exists
+#             except Exception as e:
+#                 print(f"[Warning] Failed to load Density_avg.dat in {folder_name}: {e}")
+#                 # Fallback to per-step logic if avg file is present but unreadable
+
+#         # Only use per-step density files if no Density_avg.dat exists or it failed to load
+#         density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
+#         # Only include files with a numeric step after Density_
+#         steps = []
+#         file_map = {}
+#         for f in density_files:
+#             base = os.path.basename(f)
+#             step_part = base.split("_")[1].split(".")[0]
+#             try:
+#                 step = int(step_part)
+#                 steps.append(step)
+#                 file_map[step] = f
+#             except ValueError:
+#                 # Skip files like Density_avg.dat, Density_avg_startXXXX.dat, etc.
+#                 continue
+#         steps = sorted(steps)
+#         for step in steps_iter:
+#             idx = bisect.bisect_left(steps, step)
+#             profiles = []
+#             for s in steps[idx:]:
+#                 path = file_map[s]
+#                 try:
+#                     data = np.loadtxt(path)
+#                     if data.ndim == 1:
+#                         profiles.append(data)
+#                     elif data.ndim == 2:
+#                         profiles.append(np.mean(data, axis=0))
+#                 except Exception:
+#                     continue
+#             if not profiles:
+#                 print(f"[Warning] No profiles found for folder {folder_name} step {step}")
+#                 continue
+#             avg_profile = np.mean(profiles, axis=0)
+#             print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
+#             smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
+#             profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
+#     return profiles_by_step
+
+def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
     profiles_by_step = {}
-    folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
+    
+    # Get all subfolders in runs_dir
+    folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) 
+               if os.path.isdir(os.path.join(runs_dir, f))]
     print(f"folders found: {folders}")
 
-    # Ensure steps_to_include is iterable
-    if isinstance(steps_to_include, int):
-        steps_to_include = [steps_to_include]
+    # Ensure steps_to_include is a list
     if isinstance(steps_to_include, int):
         steps_iter = [steps_to_include]
     else:
         steps_iter = steps_to_include
 
     for folder in folders:
-        if density_avg_exists:
+        folder_name = os.path.basename(folder)
+
+        # Look for Density_avg_*.dat files using glob
+        density_avg_files = glob.glob(os.path.join(folder, "Density_avg_*.dat"))
+
+        if density_avg_files:
+            density_avg_path = density_avg_files[0]  # use first match
+            print(f"[Info] Using {density_avg_path} in folder {folder_name}")
             try:
                 data = np.loadtxt(density_avg_path)
                 if data.ndim == 2:
                     avg_profile = np.mean(data, axis=0)
                 else:
                     avg_profile = data
-                print(f"[Info] Using Density_avg.dat for folder {folder_name}")
                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
-                # Fill profiles_by_step for every requested step with the same average profile
+                # Assign same profile to all requested steps
                 for step in steps_iter:
                     profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
-                continue  # Skip per-step files if avg exists
+                continue  # skip per-step files if avg exists
             except Exception as e:
-                print(f"[Warning] Failed to load Density_avg.dat in {folder_name}: {e}")
-                # Fallback to per-step logic
-        else:
-            # Fallback: use per-step density files
-            density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
-            steps = sorted([
-                int(os.path.basename(f).split("_")[1].split(".")[0])
-                for f in density_files
-            ])
-            file_map = {
-                int(os.path.basename(f).split("_")[1].split(".")[0]): f
-                for f in density_files
-            }
-            for step in steps_iter:
-                idx = bisect.bisect_left(steps, step)
-                profiles = []
-                for s in steps[idx:]:
-                    path = file_map[s]
-                    try:
-                        data = np.loadtxt(path)
-                        if data.ndim == 1:
-                            profiles.append(data)
-                        elif data.ndim == 2:
-                            profiles.append(np.mean(data, axis=0))
-                    except Exception:
-                        continue
-                if not profiles:
-                    print(f"[Warning] No profiles found for folder {folder_name} step {step}")
-                    continue
-                avg_profile = np.mean(profiles, axis=0)
-                print(f"shape of average profile for {folder_name} step {step}: {avg_profile.shape}")
+                print(f"[Warning] Failed to load {density_avg_path} in {folder_name}: {e}")
+                # fallback to per-step files
+
+        # If no avg file or failed loading, use per-step files
+        density_files = glob.glob(os.path.join(folder, "Density_*.dat"))
+
+        # Map steps to their files, excluding non-numeric suffixes
+        steps = []
+        file_map = {}
+        for f in density_files:
+            base = os.path.basename(f)
+            parts = base.split("_")
+            if len(parts) < 2:
+                continue
+            step_part = parts[1].split(".")[0]
+            try:
+                step = int(step_part)
+                steps.append(step)
+                file_map[step] = f
+            except ValueError:
+                # skip files like Density_avg_startXXXX.dat
+                continue
+        steps = sorted(steps)
+
+        for step in steps_iter:
+            if step not in file_map:
+                print(f"[Warning] Step {step} not found in {folder_name}")
+                continue
+
+            # Load the profile for the exact step (or you could implement window averaging here)
+            try:
+                data = np.loadtxt(file_map[step])
+                if data.ndim == 2:
+                    avg_profile = np.mean(data, axis=0)
+                else:
+                    avg_profile = data
                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
                 profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
+            except Exception as e:
+                print(f"[Warning] Failed to load step {step} profile in {folder_name}: {e}")
+
     return profiles_by_step
+
 
 def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method=None):
     # Group keys by subfolder
@@ -901,8 +1020,7 @@ def check_if_at_integration_points_equal(save_dir, func_interp, func, a, b, tol=
     plt.figure()
     plt.plot(x_plot, y_plot)
     plt.scatter([a, b], [val_a, val_b], color='red', label='Integration points')
-    plt.title(f'{func_name} between integration points a={a:.2f}, b={b:.2f}')
-    plt.xlabel('x')
+    plt.title(f'{func_name} between integration points func({a:.2f})={val_a:.2f}, func({b:.2f})={val_b:.2f}')
     plt.ylabel('func(x)')
     plt.legend()
     save_dir = os.path.join(save_dir, f"drho_and_d2rho")

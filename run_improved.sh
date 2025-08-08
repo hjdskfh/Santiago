@@ -242,6 +242,7 @@ if [ "$DENSITY_AVERAGING" = "1" ]; then
         FLAGS="${FLAGS}${DENSITY_AVERAGING_STEP}"
     fi
 fi
+FLAGS="${FLAGS}_amplitude${amplitude}"
 
 # Apply flags to directory name (always include timestamp, add flags if any)
 RUNS_DIR="$BASE_RUNS_DIR/run_${DATETIME}${FLAGS}"
@@ -276,7 +277,7 @@ echo "Starting parameter sweep..."
 # Parameter ranges - modify these as needed
 densities=(0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9)
 tumble_rates=(0.11)
-total_time=500000
+total_time=600000
 start_tumble_rate=0.005
 
 

@@ -20,9 +20,16 @@ echo ""
 # possible to average the density already during the simulation with --density-averaging
 
 # Loop over amplitudes
+time {
 for amplitude in 0.05 0.075 0.10 0.125 0.15 0.175 0.20; do
   echo "Running with amplitude $amplitude..."
   time ./run_improved.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density --density-averaging 5000 --amplitude "$amplitude" "$@"
 done
 
+# time ./run_improved.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density --amplitude 0.20 "$@"
+}
+
+# time ./run_improved.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density --density-averaging 5000 --amplitude 0.20 "$@"
+
+# time ./run_improved.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density --amplitude 0.20 "$@"
 

@@ -1,14 +1,12 @@
-import pandas as pd
-import matplotlib.pyplot as plt
+import numpy as np
+import glob
 
-df = pd.read_csv('output.tsv', sep='\t')
+files = sorted(glob.glob("/Users/leabauer/Documents/code/runs/run_20250808_101408_director-uneven-sin_track_flux_density_amplitude0.20/d0.7_t0.11_time11000_gamma-0.5/Density_*.dat"))
+relevant_files = [f for f in files if 5000 <= int(f.split("_")[-1].split(".")[0]) <= 11000]
 
-plt.plot(df['index'], df['gamma'], label='Gamma')
-plt.plot(df['index'], df['eta'], label='Eta')
-plt.xlabel('Index')
-plt.ylabel('Value')
-plt.title('Gamma and Eta vs Index')
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+profiles = [np.loadtxt(f) for f in relevant_files]
+avg = np.mean(profiles, axis=0)
+
+sim_avg = np.loadtxt("/Users/leabauer/Documents/code/runs/run_20250808_100929_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20/d0.7_t0.11_time11000_gamma-0.5/Density_avg_start5000.dat")
+
+print("Max diff:", np.max(np.abs(avg - sim_avg)))
