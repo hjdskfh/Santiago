@@ -495,7 +495,7 @@ def visualize_density_evolution_stacked(runs_dir, save_dir=None, show_individual
     print("Density evolution stacked visualization complete!")
 
 def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=True, mu=None, save_choice=False, save_dir=None, method=None):
-    profiles_by_step = compute_density_profiles_by_step(runs_dir, steps_to_include, mu=None, smooth=smooth, method=method)
+    profiles_by_step = compute_density_profiles_by_step(runs_dir, steps_to_include, mu=mu, smooth=smooth, method=method)
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return
@@ -545,6 +545,9 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
         plt.plot(rho_exp, label=f"rho_exp")
         plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
         plt.close()
+
+        if np.any(rho_exp > 3):
+            raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
 
         # Get J for the same key
         J_exp = profiles_by_step_flux.get(key_density)
@@ -667,6 +670,8 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
         plt.plot(rho_exp, label=f"rho_exp")
         plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
         plt.close()
+        if np.any(rho_exp > 3):
+            raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
 
         J_exp = profiles_by_step_flux.get(key_density)
         if J_exp is None:
@@ -679,11 +684,36 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
             x_grid = np.linspace(0, 200, len(rho_exp))
             rho_moved = rho_exp - rho_est
             rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
+            print(f"shape of rho_moved_interp: {rho_moved_interp(x_grid).shape}")
             J_div_rho = J_exp / rho_exp
             J_div_rho_minus_grad_U = J_div_rho - gradU
 
             # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
+            if len(roots) < 2:
+                print(f"Error at rho_est={rho_est:.2f} for {key_density}, less than two roots found.")
+                plt.plot(rho_moved, label=f"rho_moved for rho_est={rho_est:.2f}")
+                plt.legend()
+                plt.show()
+                print(f"[Warning] Less than two roots found for rho_moved={rho_est:.2f} in {key_density}, using full range.")
+                plt.close()
+
+                plt.plot(rho_moved_interp(x_grid), label=f"rho_interp for rho_est={rho_est:.2f}")
+                plt.legend()
+                plt.show()
+                plt.close()
+
+                plt.plot(J_div_rho_minus_grad_U, label=f"J_div_rho_minus_grad_U")
+                plt.legend()
+                plt.show()
+                plt.close()
+
+                plt.plot(rho_exp, label=f"rho_exp for rho_est={rho_est:.2f}")
+                plt.legend()
+                plt.show()
+                plt.close()
+                continue
+
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
 

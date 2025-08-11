@@ -71,6 +71,8 @@ def plot_3d_surface(df, value_col='lambda', title=None, save_path=None):
     surf = ax.plot_surface(X, Y, Z, cmap='viridis', edgecolor='none')
     ax.set_xlabel('rho')
     ax.set_ylabel('amplitude')
+    if value_col == 'gamma':
+        ax.invert_yaxis()
     ax.set_zlabel(value_col)
     # Also plot 2D slices: gamma/lambda vs rho for each amplitude
     for amp in sorted(df['amplitude'].unique()):

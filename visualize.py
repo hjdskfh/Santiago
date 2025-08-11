@@ -21,14 +21,23 @@ if __name__ == "__main__":
 
     # --- Manual folder list for batch processing ---
     # Uncomment and fill this list to process multiple folders manually
+    # manual_folders = [
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_110111_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_112030_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_113914_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_115632_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_121247_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_122822_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_124329_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
+    # ]
     manual_folders = [
-        # "/Users/leabauer/Documents/code/runs/run_20250808_110111_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
-        # "/Users/leabauer/Documents/code/runs/run_20250808_112030_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075",
-        # "/Users/leabauer/Documents/code/runs/run_20250808_113914_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
-        # "/Users/leabauer/Documents/code/runs/run_20250808_115632_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
-        "/Users/leabauer/Documents/code/runs/run_20250808_121247_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
-        "/Users/leabauer/Documents/code/runs/run_20250808_122822_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
-        "/Users/leabauer/Documents/code/runs/run_20250808_124329_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
+        # "/Users/leabauer/Documents/code/runs/run_20250808_175816_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
+        "/Users/leabauer/Documents/code/runs/run_20250808_200703_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075"#,
+        # "/Users/leabauer/Documents/code/runs/run_20250808_221145_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
+        # "/Users/leabauer/Documents/code/runs/run_20250809_000701_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
+        # "/Users/leabauer/Documents/code/runs/run_20250809_015505_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
+        # "/Users/leabauer/Documents/code/runs/run_20250809_033821_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
+        # "/Users/leabauer/Documents/code/runs/run_20250809_051805_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
     ]
 
     # manual_folders = [
@@ -295,11 +304,11 @@ if __name__ == "__main__":
                     else:
                         raise FileNotFoundError("No density files found in the specified runs directory.")
                     method_input = 'both'  # do both methods: options: 'kernel', 'diff', 'both'
-                    lambda_choice = 'densitydep'  # default to density dependent: options: 'constant', 'densitydep', 'both'
+                    lambda_choice = 'constant'  # default to density dependent: options: 'constant', 'densitydep', 'both'
                     set_rho_min = 1.4  # default min density
-                    set_rho_max = 2.7  # default max density
-                    set_mu = 1  # default kernel width factor
-                    nr_of_slices = 20  # default number of slices
+                    set_rho_max = 2.1  # default max density
+                    set_mu = 2  # default kernel width factor
+                    nr_of_slices = 50  # default number of slices
                 else:
                     while True:
                         try:

@@ -846,7 +846,19 @@ def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu
                     avg_profile = np.mean(data, axis=0)
                 else:
                     avg_profile = data
+                
                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
+                if np.any(smoothed > 3):
+                    plt.plot(smoothed, label=f"{folder_name[:15]} avg profile")
+                    plt.plot(avg_profile, label=f"{folder_name[:15]} raw profile", linestyle='--')
+                    plt.figtext(0.5, 0.01, density_avg_path[40:], ha='center', fontsize=10)
+                    plt.title(f"Density Profile for {folder_name[:15]}")
+                    plt.xlabel("X Position")
+                    plt.ylabel("Density")
+                    plt.legend()
+                    plt.grid(True, alpha=0.3)
+                    plt.savefig(f"{folder_name[:15]}_density_profile.png", dpi=300, bbox_inches='tight')
+                    plt.show()
                 # Assign same profile to all requested steps
                 for step in steps_iter:
                     profiles_by_step[(folder_name, step)] = (smoothed, d1, d2)
@@ -938,7 +950,6 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
 def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=None, method=None):
     profiles_by_step = {}
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
-    print(f"folders found: {folders}")
 
     # Ensure steps_to_include is iterable
     if isinstance(steps_to_include, int):
@@ -1033,7 +1044,6 @@ def check_if_at_integration_points_equal(save_dir, func_interp, func, a, b, tol=
 
 def find_move_prob_file(runs_dir):
     folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
-    print(f"folders found: {folders}")
     for folder in folders:
         moveprob_files = glob.glob(os.path.join(folder, "MoveProbgradU_*.dat"))
         if moveprob_files:
