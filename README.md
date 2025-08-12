@@ -42,8 +42,30 @@ This repository contains tools for running, analyzing, and visualizing results f
 - `plot_lam_gam_2D_3D.py` — 3D/2D plotting script for gamma/lambda
 - `postprocessing/engine.py`, `postprocessing/manager.py`, `postprocessing/helper.py` — Core postprocessing modules
 - `lattice2D.c` - C code that does the simulation
+- `run.sh` - script that runs the simulations in `lattice2D.c` for different density, tumbling rate etc settings
+- `terminal.sh` - script that runs `run.sh` with all the necessary flags, enables multiple runs to be started by one script
+- `rest/lam_gam_est.ipynb` - code from Pablo on calculating lanbda and gamma when they are not densitydependent and when they are densitydependent
+- `rest/plot_dat.py` - file to plot files in the runs like `Density_5000.dat`
+- folders like `1108_analysis_mu1_slices40_1.3-2.2` - old analysis folder that got renamed, inside you can see which runs where being analysed
+
+## Installation
+
+### Install requirements
+```sh
+pip install -r requirements.txt
+```
+
+### Activate venv
+```sh
+source venv/bin/activate
+```
 
 ## Usage Examples
+
+### Activate venv
+```sh
+source venv/bin/activate
+```
 
 ### Run a Batch of Simulations
 ```sh
@@ -60,7 +82,7 @@ python visualize_simulation.py runs/run_YYYYMMDD_HHMMSS
 python plot_lam_gam.py
 ```
 
-### Adding features
+## Adding features
 - If you need to add a parameter to `lattice2D.c` consult `HOW_TO_ADD_PARAMETERS.md`
 - new analysing options can be added to `visualize.py` by:
     - to # Show options to user add your statement: e.g.
@@ -83,7 +105,7 @@ python plot_lam_gam.py
 
 ## Troubleshooting
 - If you see warnings about missing files or folders, check that your simulation runs completed successfully and that the output structure matches expectations.
-- For large batch runs, ensure you have sufficient disk space in `runs/` and `analysis/`.
+- For large batch runs without the flag `--density-averaging` in `terminal.sh` activated, ensure you have sufficient disk space in `runs/` and `analysis/`.
 
 ## Contact
 Feel free to ask any questions you have by writing me an email under `leavictoria.bauer@gmail.com`.

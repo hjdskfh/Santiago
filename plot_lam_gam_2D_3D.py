@@ -72,7 +72,7 @@ def plot_2d_family(df, value_col='lambda', title=None, save_path=None):
     plt.xlabel('rho')
     plt.ylabel(value_col)
     plt.title(title or f'{value_col} vs rho')
-    plt.ylim(-5000, 2500)
+    # plt.ylim(-5000, 2500)
     plt.legend(title='Amplitude', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
     if save_path:
@@ -138,7 +138,7 @@ def plot_3d_surface(df, value_col='lambda', title=None, save_path=None):
 
 if __name__ == "__main__":
     # analysis_base = "0808_analysis_mu1_slices20"
-    analysis_base = "analysis"
+    analysis_base = "1108_analysis_mu1_slices40_1.5-2.0_only0.05"
     result_type = 'densitydep'  # or 'constant'
     methods = ['diff', 'kernel']  # List all methods you want to process
 
@@ -155,7 +155,7 @@ if __name__ == "__main__":
             df,
             value_col='lambda',
             title=f'Lambda vs Rho (Colored by Amplitude) — {method}',
-            save_path=os.path.join(analysis_base, f'lambda_vs_rho_lines_{method}_{result_type}_{analysis_base}.png')
+            save_path=os.path.join(analysis_base, f'lambda_vs_rho_lines_{method}_{result_type}_{analysis_base}_nozoom.png')
         )
 
         # Plot gamma as 2D line plot colored by amplitude
@@ -163,12 +163,12 @@ if __name__ == "__main__":
             df,
             value_col='gamma',
             title=f'Gamma vs Rho (Colored by Amplitude) — {method}',
-            save_path=os.path.join(analysis_base, f'gamma_vs_rho_lines_{method}_{result_type}_{analysis_base}.png')
+            save_path=os.path.join(analysis_base, f'gamma_vs_rho_lines_{method}_{result_type}_{analysis_base}_nozoom.png')
         )
 
         # Plot lambda as 3D surface
         plot_3d_surface(df, value_col='lambda', title=f'Lambda vs Rho and Amplitude ({method})',
-                        save_path=os.path.join(analysis_base, f'lambda_vs_rho_amplitude_{method}_{result_type}_{analysis_base}.png'))
+                        save_path=os.path.join(analysis_base, f'lambda_vs_rho_amplitude_{method}_{result_type}_{analysis_base}_nozoom.png'))
         # Plot gamma
         plot_3d_surface(df, value_col='gamma', title=f'Gamma vs Rho and Amplitude ({method})',
-                        save_path=os.path.join(analysis_base, f'gamma_vs_rho_amplitude_{method}_{result_type}_{analysis_base}.png'))
+                        save_path=os.path.join(analysis_base, f'gamma_vs_rho_amplitude_{method}_{result_type}_{analysis_base}_nozoom.png'))
