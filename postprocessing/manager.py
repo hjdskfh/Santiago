@@ -499,7 +499,7 @@ def analyze_density_derivatives_grid(runs_dir, steps_to_include=None, smooth=Tru
     if not profiles_by_step:
         print("No profiles found for the selected steps.")
         return
-    plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method)
+    plot_density_derivative_grid(profiles_by_step, save_choice=save_choice, save_dir=save_dir, title_prefix="Smoothed Profiles & Derivatives", method=method, mu=mu)
 
 # ---- CASE: LAMBDA AND GAMMA CONSTANTS -----
 def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_averaging_step=0, x_min=0, x_max=200, rho_min=1.0, rho_max=1.75, mu=None, nr_of_slices=10):
@@ -535,16 +535,15 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
     lambda_arr = np.empty(num_simulations)
     folder_names = []
 
+
+    # --- Collect all rho_exp for plotting after the loop ---
+    all_rho_exp = []
+    all_rho_exp_labels = []
+
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
-        # load data for this simulation run
-        # key is (folder_name, step)
-        save_dir_rho = os.path.join(save_dir, "rho")
-        os.makedirs(save_dir_rho, exist_ok=True)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
-        plt.figure()
-        plt.plot(rho_exp, label=f"rho_exp")
-        plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
-        plt.close()
+        all_rho_exp.append(rho_exp)
+        all_rho_exp_labels.append(f"rho_exp_{key_density[0][:15]}")
 
         if np.any(rho_exp > 3):
             raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
@@ -555,7 +554,6 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
             print(f"[Warning] No flux profile for {key_density}, skipping.")
             continue
 
-        # return contents of first MoveProb file it finds as np array
         gradU = find_move_prob_file(runs_dir)
 
         A = []
@@ -571,35 +569,26 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
             if np.isnan(J_div_rho_minus_grad_U).any():
                 print(f"[Warning] NaN values found in J_div_rho_minus_grad_U for {key_density}, skipping.")
 
-            # determination of integration limits
             roots = find_all_roots(rho_moved_interp, x_min, x_max, steps=1000)
 
             a = roots[0] if len(roots) > 0 else x_min
             b = roots[1] if len(roots) > 0 else x_max
 
-            # Suppose x_grid is the grid of x values (e.g., np.linspace(0, 200, len(d_rho_exp)))
             d_rho_exp_func = interp1d(x_grid, d_rho_exp, kind='cubic', fill_value="extrapolate")
             d2_rho_exp_func = interp1d(x_grid, d2_rho_exp, kind='cubic', fill_value="extrapolate")
 
             check_if_at_integration_points_equal(save_dir, d_rho_exp_func, d_rho_exp, a, b)
             check_if_at_integration_points_equal(save_dir, d2_rho_exp_func, d2_rho_exp, a, b)
 
-            #plt.plot(rho_moved_interp(np.linspace(a, b, 100)), label=f"rho_est={rho_est:.2f}")
-            #plt.legend()
-            #plt.show()
-
-            # integrals for current
             J_div_rho_minus_grad_U_func = interp1d(x_grid, J_div_rho_minus_grad_U, kind='cubic', fill_value="extrapolate")
             integral_j, err = quad(J_div_rho_minus_grad_U_func, a, b)
 
-            # values of A and B
             a0 = -(d2_rho_exp_func(b) - d2_rho_exp_func(a))
             a1 = (d_rho_exp_func(b) ** 2 - d_rho_exp_func(a) ** 2)
-            # subtract the one particle current to eliminate potential influence
-            b = - integral_j
+            b_val = - integral_j
             A.append([a0, a1])
-            B.append(b)
-        
+            B.append(b_val)
+
         A = np.array(A)
         B = np.array(B)
 
@@ -621,6 +610,17 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
         gamma_arr[idx] = gam
         lambda_arr[idx] = lam
         folder_names.append(folder_name)
+
+    # Plot all rho_exp on one figure after the loop
+    plt.figure()
+    for rho_exp, label in zip(all_rho_exp, all_rho_exp_labels):
+        plt.plot(rho_exp, label=label)
+    plt.title("All rho_exp profiles")
+    plt.xlabel("X Position")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.savefig(f"{save_dir}/rho_exp_all.png")
+    plt.close()
 
     output_file.close()
     data = {
@@ -662,14 +662,16 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
     profiles_by_step_density = compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
     profiles_by_step_flux = compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, method=method, mu=mu)
 
+
+    # --- Collect all rho_exp for plotting after the loop ---
+    all_rho_exp = []
+    all_rho_exp_labels = []
+
     for idx, (key_density, value_density) in enumerate(profiles_by_step_density.items()):
-        save_dir_rho = os.path.join(save_dir, "rho")
-        os.makedirs(save_dir_rho, exist_ok=True)
         rho_exp, d_rho_exp, d2_rho_exp = value_density
-        plt.figure()
-        plt.plot(rho_exp, label=f"rho_exp")
-        plt.savefig(f"{save_dir_rho}/rho_exp_{key_density[0]}.png")
-        plt.close()
+        all_rho_exp.append(rho_exp)
+        all_rho_exp_labels.append(f"rho_exp_{key_density[0][:15]}")
+
         if np.any(rho_exp > 3):
             raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
 
@@ -678,13 +680,14 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
             print(f"[Warning] No flux profile for {key_density}, skipping.")
             continue
 
-        gradU = find_move_prob_file(runs_dir)  
+        gradU = find_move_prob_file(runs_dir)
+        # print(f"shape of gradU: {gradU.shape}, shape of J_exp: {J_exp.shape}, shape of rho_exp: {rho_exp.shape}")
+        # print(f"grad U: {gradU[:5]}, J_exp: {J_exp[:5]}, rho_exp: {rho_exp[:5]}")
 
         for rho_est in rho_est_arr:
             x_grid = np.linspace(0, 200, len(rho_exp))
             rho_moved = rho_exp - rho_est
             rho_moved_interp = interp1d(x_grid, rho_moved, kind='cubic')
-            print(f"shape of rho_moved_interp: {rho_moved_interp(x_grid).shape}")
             J_div_rho = J_exp / rho_exp
             J_div_rho_minus_grad_U = J_div_rho - gradU
 
@@ -733,7 +736,16 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
             a0_exp.append(a0 / b_val)
             a1_exp.append(a1 / b_val)
 
-    # System of equations
+    # Plot all rho_exp on one figure after the loop
+    plt.figure()
+    for rho_exp, label in zip(all_rho_exp, all_rho_exp_labels):
+        plt.plot(rho_exp, label=label)
+    plt.title("All rho_exp profiles")
+    plt.xlabel("X Position")
+    plt.ylabel("Density")
+    plt.legend()
+    plt.savefig(f"{save_dir}/rho_exp_all.png")
+    plt.close()
 
     # Matrix build
     unique_simulations = set(key[0] for key, _ in profiles_by_step_density.items())

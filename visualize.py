@@ -30,19 +30,20 @@ if __name__ == "__main__":
     #     "/Users/leabauer/Documents/code/runs/run_20250808_122822_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
     #     "/Users/leabauer/Documents/code/runs/run_20250808_124329_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
     # ]
-    manual_folders = [
-        # "/Users/leabauer/Documents/code/runs/run_20250808_175816_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
-        "/Users/leabauer/Documents/code/runs/run_20250808_200703_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075"#,
-        # "/Users/leabauer/Documents/code/runs/run_20250808_221145_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
-        # "/Users/leabauer/Documents/code/runs/run_20250809_000701_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
-        # "/Users/leabauer/Documents/code/runs/run_20250809_015505_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
-        # "/Users/leabauer/Documents/code/runs/run_20250809_033821_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
-        # "/Users/leabauer/Documents/code/runs/run_20250809_051805_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
-    ]
-
     # manual_folders = [
-        
+    #     # "/Users/leabauer/Documents/code/runs/run_20250808_175816_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_200703_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075",
+    #     "/Users/leabauer/Documents/code/runs/run_20250808_221145_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
+    #     "/Users/leabauer/Documents/code/runs/run_20250809_000701_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
+    #     "/Users/leabauer/Documents/code/runs/run_20250809_015505_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
+    #     "/Users/leabauer/Documents/code/runs/run_20250809_033821_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
+    #     "/Users/leabauer/Documents/code/runs/run_20250809_051805_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
     # ]
+
+    manual_folders = [
+        "/Users/leabauer/Documents/code/runs/run_20250811_182406_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
+        "/Users/leabauer/Documents/code/runs/run_20250812_025810_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075"
+    ]
 
     if len(sys.argv) > 1:
         # Accept multiple command line arguments (folders)
@@ -92,6 +93,13 @@ if __name__ == "__main__":
             exit(0)
     
     for runs_dir in runs_dirs:
+        # Check if the run directory exists before processing
+        if not os.path.exists(runs_dir) or not os.path.isdir(runs_dir):
+            print(f"[SKIP] Run directory does not exist or is not a directory: {runs_dir}")
+            continue
+        if not os.path.exists(runs_dir):
+            print(f"[SKIP] Directory does not exist: {runs_dir}")
+            continue
         for mode_choice in mode_choices:
             # Extract run date from directory name for use in output filenames
             run_date = ""
@@ -111,6 +119,7 @@ if __name__ == "__main__":
             print(f"Analysis output will be saved in: {analysis_dir}")
 
             if mode_choice == '1':
+            
                 use_defaults = True
                 if use_defaults:
                     number_input = "1, 5000, 500000"
@@ -134,6 +143,7 @@ if __name__ == "__main__":
                     print("Visualization(s) complete!")
 
             elif mode_choice == '2':
+                save_dir = os.path.join(analysis_dir, f"comparison_grids")
                 create_parameter_sweep_visualization(runs_dir, process_all_times=True, save_dir=save_dir)
                 print("All visualizations complete!")
 
@@ -223,12 +233,13 @@ if __name__ == "__main__":
                 print("2D stacked density evolution complete!")
 
             elif mode_choice == '9':
+                print("For 9: kernel_widths is the kernel width for Gaussian smoothing in sigma so if mu=1, the kernel width is 1 sigma. Here multiple kernel widths can be used.")
                 use_defaults = True  # Change to False if you want to re-enable input
                 if use_defaults:
                     step_list = [5000]  # Example default steps
                     kind_of_derivative = 'both'
                     smooth_choice = 'y'
-                    kernel_width = 2  # Default kernel width factor
+                    kernel_widths = [1]  # Default kernel width factor
                 else:
                     while True:
                         try:
@@ -265,34 +276,37 @@ if __name__ == "__main__":
                     print(f"Calculating density derivatives using method: {kind_of_derivative}")
                     smooth_choice = input("Do you want to smooth the density profiles? (y/n): ").strip().lower()
                     while True:
-                        kernel_width = input("Enter kernel width for Gaussian smoothing in factor of mu (default is 1 -> sigma, 2: 2*sigma): ").strip()
+                        kernel_width_input = input("Enter kernel width(s) for Gaussian smoothing (comma-separated, e.g., 1,2,2.5): ").strip()
                         try:
-                            kernel_width = float(kernel_width)
-                            break
+                            kernel_widths = [float(k.strip()) for k in kernel_width_input.split(",") if k.strip()]
+                            if kernel_widths:
+                                break
+                            else:
+                                print("Please enter at least one numeric value.")
                         except ValueError:
-                            print("Please enter a single numeric value (e.g., 1 or 2).")
-               
+                            print("Please enter only numeric values, separated by commas (e.g., 1, 2, 2.5).")
 
                 save_choice = 'y'
-                save_dir = os.path.join(analysis_dir, "density_stacked_evolution") if save_choice == 'y' else None
                 smooth_density = smooth_choice == 'y'
-
                 title_steps = "steps_" + "_".join(map(str, step_list))
-                if save_choice == 'y' and smooth_choice == 'y':
-                    save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}_smoothing")
-                if save_choice == 'y' and smooth_choice == 'n':
-                    save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}")
-                os.makedirs(os.path.dirname(save_dir), exist_ok=True)
-                if kind_of_derivative == 'both':
-                    print("Calculating both Gaussian kernel and finite difference derivatives.")
-                    analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='kernel')
-                    analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='diff')
-                else:
-                    print(f"Calculating {kind_of_derivative} density derivatives.")
-                    analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
+                for kernel_width in kernel_widths:
+                    if save_choice == 'y' and smooth_choice == 'y':
+                        save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}_smoothing")
+                    elif save_choice == 'y' and smooth_choice == 'n':
+                        save_dir = os.path.join(analysis_dir, f"grid_density_average_derivatives_mu_{kernel_width}sigma_{kind_of_derivative}_{title_steps}")
+                    else:
+                        save_dir = None
+                    os.makedirs(os.path.dirname(save_dir), exist_ok=True)
+                    if kind_of_derivative == 'both':
+                        print(f"Calculating both Gaussian kernel and finite difference derivatives for kernel width {kernel_width}.")
+                        analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='kernel')
+                        analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method='diff')
+                    else:
+                        print(f"Calculating {kind_of_derivative} density derivatives for kernel width {kernel_width}.")
+                        analyze_density_derivatives_grid(runs_dir, steps_to_include=step_list, smooth=smooth_density, mu=kernel_width, save_choice=save_choice, save_dir=save_dir, method=kind_of_derivative)
 
             elif mode_choice == '10':
-            
+                print("For 10: set_mu is the kernel width for Gaussian smoothing in sigma so if mu=1, the kernel width is 1 sigma. Only one number can be chosen, because all created files will be used in 'plot_lam_gam_2D_3D.py'")
                 use_defaults = True  # Change to False if you want to re-enable input
                 if use_defaults:
                     start_averaging_step = 5000  # Example default steps
@@ -304,11 +318,11 @@ if __name__ == "__main__":
                     else:
                         raise FileNotFoundError("No density files found in the specified runs directory.")
                     method_input = 'both'  # do both methods: options: 'kernel', 'diff', 'both'
-                    lambda_choice = 'constant'  # default to density dependent: options: 'constant', 'densitydep', 'both'
-                    set_rho_min = 1.4  # default min density
-                    set_rho_max = 2.1  # default max density
-                    set_mu = 2  # default kernel width factor
-                    nr_of_slices = 50  # default number of slices
+                    lambda_choice = 'densitydep'  # default to density dependent: options: 'constant', 'densitydep', 'both'
+                    set_rho_min = 1.3  # default min density
+                    set_rho_max = 2.2  # default max density
+                    set_mu = 1 # default kernel width factor
+                    nr_of_slices = 40  # default number of slices
                 else:
                     while True:
                         try:
@@ -327,20 +341,6 @@ if __name__ == "__main__":
                     set_mu = input("Enter kernel width for Gaussian smoothing in factor of mu (default is 1 -> sigma, 2: 2*sigma): ").strip()
                     nr_of_slices = input("Enter number of slices for rho estimation (default is 20): ").strip()
 
-                # # Check if Density_avg file in first folder of runs_dir and override start_averaging_step if it exists
-                # folders = [os.path.join(runs_dir, f) for f in os.listdir(runs_dir) if os.path.isdir(os.path.join(runs_dir, f))]
-                # densavg_path = os.path.join(folders[0], "Density_avg_*.dat")
-                # if os.path.exists(densavg_path):
-                #     steps = sorted([
-                #         int(os.path.basename(f).split("_")[1].split(".")[0])
-                #         for f in density_files
-                #     ])
-                #     start_averaging_step = steps[0]  # Override to start from the beginning if Density_avg exists
-                #     density_avg_exists = True
-                #     print("Density_avg_*.dat found!")
-                # else:
-                #     density_avg_exists = False
-                #     print("No Density_avg_*.dat found.")
 
                 if lambda_choice not in ['constant', 'densitydep', 'both']:
                     raise ValueError(f"Invalid lambda choice: {lambda_choice}")

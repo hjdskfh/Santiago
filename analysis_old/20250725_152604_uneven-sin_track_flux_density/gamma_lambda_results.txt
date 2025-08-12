@@ -1,2 +1,0 @@
-sim	folder	gamma	lambda
-0	d0.9_t0.08_time500000_gamma-0.5_g1	nan	nan

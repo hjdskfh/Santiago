@@ -721,7 +721,7 @@ def compute_density_derivatives(profile, mu=None, smooth=True, method=None):
     else:
         mu = mu * np.std(profile)
     if smooth:
-        smoothed = nw_kernel_regression(profile, x, x, mu)
+        smoothed = nw_kernel_regression(x, x, profile, mu)
     else:
         smoothed = profile
 
@@ -849,15 +849,17 @@ def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu
                 
                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
                 if np.any(smoothed > 3):
+                    # plt.show()
+                    plt.close()
                     plt.plot(smoothed, label=f"{folder_name[:15]} avg profile")
                     plt.plot(avg_profile, label=f"{folder_name[:15]} raw profile", linestyle='--')
                     plt.figtext(0.5, 0.01, density_avg_path[40:], ha='center', fontsize=10)
-                    plt.title(f"Density Profile for {folder_name[:15]}")
+                    plt.title(f"Density Profile for mu {mu} sigma for {folder_name[:15]}")
                     plt.xlabel("X Position")
                     plt.ylabel("Density")
                     plt.legend()
                     plt.grid(True, alpha=0.3)
-                    plt.savefig(f"{folder_name[:15]}_density_profile.png", dpi=300, bbox_inches='tight')
+                    plt.savefig(f"{folder_name[:15]}_density_profile_mu{mu}.png", dpi=300, bbox_inches='tight')
                     plt.show()
                 # Assign same profile to all requested steps
                 for step in steps_iter:
@@ -908,7 +910,7 @@ def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu
     return profiles_by_step
 
 
-def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method=None):
+def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=None, title_prefix="Density & Derivatives", method=None, mu=None):
     # Group keys by subfolder
     from collections import defaultdict
     folder_steps = defaultdict(list)
@@ -940,7 +942,7 @@ def plot_density_derivative_grid(profiles_by_step, save_choice=None, save_dir=No
         plt.suptitle(f"{title_prefix} - {folder}", fontsize=16, fontweight='bold')
         plt.tight_layout(rect=[0, 0, 1, 0.96])
         if save_choice:
-            save_path = f"{save_dir}/density_derivative_grid_{method}_{folder}.png"
+            save_path = f"{save_dir}/density_derivative_grid_mu{mu}sigma_{method}_{folder}.png"
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             print(f"Density derivative grid saved to: {save_path}")
@@ -999,7 +1001,7 @@ def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=No
             used_start_step = steps[idx] if idx < len(steps) else steps[-1]
             # get the starting step profile
             start_step_profile = profiles[0]
-            print(f"Using start step {used_start_step} for folder {folder_name} step {step}")
+            # print(f"Using start step {used_start_step} for folder {folder_name} step {step}")
             end_step = steps[-1]
             final_profile = profiles[-1]  # Use the last profile as the representative one
             reduced_profile = (final_profile * end_step - used_start_step * start_step_profile) / (end_step - used_start_step)
@@ -1008,7 +1010,7 @@ def compute_flux_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu=No
             if mu is None:
                 mu = np.std(reduced_profile)
             if smooth:
-                smoothed = nw_kernel_regression(reduced_profile, x, x, mu)
+                smoothed = nw_kernel_regression(x, x, reduced_profile, mu)
             else:
                 smoothed = reduced_profile
             profiles_by_step[(folder_name, step)] = (smoothed)
@@ -1028,17 +1030,17 @@ def check_if_at_integration_points_equal(save_dir, func_interp, func, a, b, tol=
     else:
         func_name = 'function'
 
-    plt.figure()
-    plt.plot(x_plot, y_plot)
-    plt.scatter([a, b], [val_a, val_b], color='red', label='Integration points')
-    plt.title(f'{func_name} between integration points func({a:.2f})={val_a:.2f}, func({b:.2f})={val_b:.2f}')
-    plt.ylabel('func(x)')
-    plt.legend()
-    save_dir = os.path.join(save_dir, f"drho_and_d2rho")
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir, exist_ok=True)
-    plt.savefig(os.path.join(save_dir, f'{func_name}_integration_points_{a:.2f}_{b:.2f}.png'))
-    plt.close()
+    # plt.figure()
+    # plt.plot(x_plot, y_plot)
+    # plt.scatter([a, b], [val_a, val_b], color='red', label='Integration points')
+    # plt.title(f'{func_name} between integration points func({a:.2f})={val_a:.2f}, func({b:.2f})={val_b:.2f}')
+    # plt.ylabel('func(x)')
+    # plt.legend()
+    # save_dir = os.path.join(save_dir, f"drho_and_d2rho")
+    # if not os.path.exists(save_dir):
+    #     os.makedirs(save_dir, exist_ok=True)
+    # plt.savefig(os.path.join(save_dir, f'{func_name}_integration_points_{a:.2f}_{b:.2f}.png'))
+    # plt.close()
     if abs(val_a - val_b) < tol:
         raise ValueError(f"Function values at integration points are too close: func({a})={val_a}, func({b})={val_b}")
 
@@ -1048,8 +1050,14 @@ def find_move_prob_file(runs_dir):
         moveprob_files = glob.glob(os.path.join(folder, "MoveProbgradU_*.dat"))
         if moveprob_files:
             try:
-                data = np.loadtxt(moveprob_files[0])
-                return data
+                # If only one file, return as 1D array
+                if len(moveprob_files) == 1:
+                    arr = np.loadtxt(moveprob_files[0])
+                    return arr
+                # If multiple files, stack as 2D array (each row = one file)
+                all_data = [np.loadtxt(f) for f in moveprob_files]
+                all_data_array = np.vstack(all_data)
+                return all_data_array
             except Exception as e:
                 print(f"Error loading {moveprob_files[0]}: {e}")
                 return None

@@ -1,0 +1,4 @@
+# Command executed on Tue Aug 12 09:39:14 -04 2025
+# Working directory: /Users/leabauer/Documents/code
+# Git commit: d228c064b3abeaf4e3a2fb3039112438faebd5f5
+./lattice2D --density 0.88 --tumble-rate 0.11 --total-time 16000000 --run-name runs/run_20250812_025810_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075/d0.88_t0.11_time16000000_gamma-0.5 --save-interval 9 --potential director-uneven-sin --gamma -0.5 --v0 0.5 --amplitude 0.075 --seed 837437 --track-movement --track-flux --track-density --density-averaging 5000
