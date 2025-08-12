@@ -21,15 +21,14 @@ if __name__ == "__main__":
 
     # --- Manual folder list for batch processing ---
     # Uncomment and fill this list to process multiple folders manually
-    # manual_folders = [
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_110111_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_112030_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_113914_director-uneven-sin_track_flux_density_densavg5000_amplitude0.10",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_115632_director-uneven-sin_track_flux_density_densavg5000_amplitude0.125",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_121247_director-uneven-sin_track_flux_density_densavg5000_amplitude0.15",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_122822_director-uneven-sin_track_flux_density_densavg5000_amplitude0.175",
-    #     "/Users/leabauer/Documents/code/runs/run_20250808_124329_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
-    # ]
+    manual_folders = [
+        "/Users/leabauer/Documents/code/runs/run_20250812_130427_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20",
+        "/Users/leabauer/Documents/code/runs/run_20250812_131428_director-uneven-sin_track_flux_density_densavg5000_amplitude0.25",
+        "/Users/leabauer/Documents/code/runs/run_20250812_132411_director-uneven-sin_track_flux_density_densavg5000_amplitude0.30",
+        "/Users/leabauer/Documents/code/runs/run_20250812_133326_director-uneven-sin_track_flux_density_densavg5000_amplitude0.35",
+        "/Users/leabauer/Documents/code/runs/run_20250812_134227_director-uneven-sin_track_flux_density_densavg5000_amplitude0.40"#,
+        #"/Users/leabauer/Documents/code/runs/run_20250812_135119_director-uneven-sin_track_flux_density_densavg5000_amplitude0.45"
+    ]
     # manual_folders = [
     #     # "/Users/leabauer/Documents/code/runs/run_20250808_175816_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
     #     "/Users/leabauer/Documents/code/runs/run_20250808_200703_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075",
@@ -40,10 +39,10 @@ if __name__ == "__main__":
     #     "/Users/leabauer/Documents/code/runs/run_20250809_051805_director-uneven-sin_track_flux_density_densavg5000_amplitude0.20"
     # ]
 
-    manual_folders = [
-        "/Users/leabauer/Documents/code/runs/run_20250811_182406_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
-        "/Users/leabauer/Documents/code/runs/run_20250812_025810_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075"
-    ]
+    # manual_folders = [
+    #     "/Users/leabauer/Documents/code/runs/run_20250811_182406_director-uneven-sin_track_flux_density_densavg5000_amplitude0.05",
+    #     "/Users/leabauer/Documents/code/runs/run_20250812_025810_director-uneven-sin_track_flux_density_densavg5000_amplitude0.075"
+    # ]
 
     if len(sys.argv) > 1:
         # Accept multiple command line arguments (folders)

@@ -545,7 +545,7 @@ def compute_gamma_lambda_constant(runs_dir, save_dir, method='diff', start_avera
         all_rho_exp.append(rho_exp)
         all_rho_exp_labels.append(f"rho_exp_{key_density[0][:15]}")
 
-        if np.any(rho_exp > 3):
+        if np.any(rho_exp > 3 + 1e-8):
             raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
 
         # Get J for the same key
@@ -672,7 +672,7 @@ def compute_gamma_lambda_density_dep(runs_dir, save_dir, method='diff', start_av
         all_rho_exp.append(rho_exp)
         all_rho_exp_labels.append(f"rho_exp_{key_density[0][:15]}")
 
-        if np.any(rho_exp > 3):
+        if np.any(rho_exp > 3 + 1e-8):
             raise ValueError(f"Error: Unexpected high density values in {key_density[0]}, max density: {np.max(rho_exp)}")
 
         J_exp = profiles_by_step_flux.get(key_density)

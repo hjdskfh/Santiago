@@ -848,7 +848,8 @@ def compute_density_profiles_by_step(runs_dir, steps_to_include, smooth=True, mu
                     avg_profile = data
                 
                 smoothed, d1, d2 = compute_density_derivatives(avg_profile, mu=mu, smooth=smooth, method=method)
-                if np.any(smoothed > 3):
+                if np.any(smoothed > 3 + 1e-8):
+                    print(f"[Error] Density profile in {folder_name} exceeds 3: it is {smoothed[smoothed > 3]}")
                     # plt.show()
                     plt.close()
                     plt.plot(smoothed, label=f"{folder_name[:15]} avg profile")

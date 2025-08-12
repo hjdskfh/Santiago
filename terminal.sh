@@ -14,7 +14,7 @@ echo ""
 # Loop over amplitudes
 time {
 
-for amplitude in 0.05 0.075; do # 0.10 0.125 0.15 0.175 0.20
+for amplitude in 0.20 0.25 0.30 0.35 0.40 0.45; do
   echo "Running with amplitude $amplitude..."
   time ./run.sh --move-prob director-uneven-sin --track-movement --track-flux --track-density --density-averaging 5000 --amplitude "$amplitude" "$@"
 done

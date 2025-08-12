@@ -284,8 +284,8 @@ echo "Starting parameter sweep..."
 # ============ PARAMETER SETTINGS - SINGLE SOURCE OF TRUTH ============
 # Parameter ranges - modify these as needed
 densities=(0.7 0.72 0.74 0.76 0.78 0.8 0.82 0.84 0.86 0.88 0.9)
-tumble_rates=(0.11)./
-total_time=16000000
+tumble_rates=(0.11)
+total_time=400000
 start_tumble_rate=0.005
 
 gamma=-0.5              # Gamma parameter for sin potentials
